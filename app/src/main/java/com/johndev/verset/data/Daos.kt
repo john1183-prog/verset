@@ -44,6 +44,9 @@ interface TagDao {
     @Query("SELECT * FROM tags WHERE name = :name LIMIT 1")
     suspend fun byName(name: String): Tag?
 
+    @Update
+    suspend fun update(tag: Tag)
+
     @Delete
     suspend fun delete(tag: Tag)
 }

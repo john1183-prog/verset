@@ -1,5 +1,7 @@
 package com.johndev.verset.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -7,6 +9,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material3.*
@@ -41,12 +44,29 @@ fun MyVersesScreen(repository: BibleRepository) {
                     LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
                         items(tags, key = { it.id }) { tag ->
                             var confirmDelete by remember { mutableStateOf(false) }
+                            var editing by remember { mutableStateOf(false) }
                             ListItem(
+                                leadingContent = {
+                                    Box(
+                                        Modifier
+                                            .size(18.dp)
+                                            .background(
+                                                color = runCatching { androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(tag.colorHex)) }
+                                                    .getOrDefault(MaterialTheme.colorScheme.secondary),
+                                                shape = androidx.compose.foundation.shape.CircleShape
+                                            )
+                                    )
+                                },
                                 headlineContent = { Text(tag.name) },
                                 modifier = Modifier.clickable { selectedTag = tag },
                                 trailingContent = {
-                                    IconButton(onClick = { confirmDelete = true }) {
-                                        Icon(Icons.Filled.Delete, contentDescription = "Delete tag")
+                                    Row {
+                                        IconButton(onClick = { editing = true }) {
+                                            Icon(Icons.Filled.Edit, contentDescription = "Edit tag")
+                                        }
+                                        IconButton(onClick = { confirmDelete = true }) {
+                                            Icon(Icons.Filled.Delete, contentDescription = "Delete tag")
+                                        }
                                     }
                                 }
                             )
@@ -64,6 +84,16 @@ fun MyVersesScreen(repository: BibleRepository) {
                                     },
                                     dismissButton = {
                                         TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
+                                    }
+                                )
+                            }
+                            if (editing) {
+                                EditTagDialog(
+                                    tag = tag,
+                                    onDismiss = { editing = false },
+                                    onSave = { newName, newColor ->
+                                        scope.launch { repository.updateTag(tag.copy(name = newName, colorHex = newColor)) }
+                                        editing = false
                                     }
                                 )
                             }
@@ -115,6 +145,59 @@ fun MyVersesScreen(repository: BibleRepository) {
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EditTagDialog(tag: Tag, onDismiss: () -> Unit, onSave: (name: String, colorHex: String) -> Unit) {
+    var name by remember { mutableStateOf(tag.name) }
+    var color by remember { mutableStateOf(tag.colorHex) }
+    val swatches = listOf("#4A6FA5", "#C9A24B", "#8B4A62", "#4A8B5C", "#B5533C", "#6B4A8B", "#5C5C5C")
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit tag") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Tag name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(16.dp))
+                Text("Color", style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.height(8.dp))
+                Row {
+                    swatches.forEach { hex ->
+                        Box(
+                            Modifier
+                                .padding(end = 8.dp)
+                                .size(32.dp)
+                                .background(
+                                    color = androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(hex)),
+                                    shape = androidx.compose.foundation.shape.CircleShape
+                                )
+                                .then(
+                                    if (color == hex)
+                                        Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, androidx.compose.foundation.shape.CircleShape)
+                                    else Modifier
+                                )
+                                .clickable { color = hex }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = name.isNotBlank(),
+                onClick = { onSave(name.trim(), color) }
+            ) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 @Composable

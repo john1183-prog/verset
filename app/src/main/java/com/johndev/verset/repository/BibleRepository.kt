@@ -24,6 +24,8 @@ class BibleRepository(private val db: AppDatabase) {
 
     suspend fun deleteTag(tag: Tag) = db.tagDao().delete(tag)
 
+    suspend fun updateTag(tag: Tag) = db.tagDao().update(tag)
+
     suspend fun saveEntry(verse: Verse, tagId: Long, note: String) {
         db.entryDao().insert(
             VerseTagEntry(
