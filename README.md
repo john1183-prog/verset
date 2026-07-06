@@ -60,19 +60,19 @@ Currently `com.johndev.verset`, app name "Verset" — both easy to rename
 
 - Launcher icon is a placeholder vector — swap for real branding art.
 - Sync is manual-trigger only, no background WorkManager job yet.
-- Tag renaming and tag colors aren't editable from the UI yet (schema supports colorHex, nothing sets it).
-- "Publish my listing in any format/style" — image card + PDF cover the two
-  formats you asked for. If you want more export *styles* (different card
-  themes/colors), that's a good next addition — the exporter is isolated in
-  `export/ImageCardExporter.kt` so adding theme variants is additive, not a rewrite.
 - No onboarding/first-run screen — app drops straight into Read tab.
 - Search is substring match only (SQL LIKE), no fuzzy/ranked search.
+- Renaming a tag doesn't check for name collisions with another existing tag —
+  low risk in practice, but two tags could technically end up with the same name.
+- PDF export has one fixed layout (no theme variants like the image export does).
 
 ## Implemented in this pass (v0.2)
 
 - Verse search (tap search icon in Read, 3+ characters, jumps to result + opens tagging)
 - Tag deletion with a confirmation dialog (cascades to delete all entries under that tag)
+- Tag rename + color picker (color dot shown in tag list)
 - Note editing on existing tagged entries (previously add/delete only)
+- Image export theme picker — 4 card styles (Navy & Gold, Parchment, Charcoal & Rose, Forest)
 
 ## KJV data source
 
