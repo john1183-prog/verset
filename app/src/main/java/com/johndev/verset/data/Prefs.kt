@@ -24,4 +24,11 @@ class Prefs(context: Context) {
     var lastChapter: Int
         get() = sp.getInt("last_chapter", 1)
         set(value) = sp.edit().putInt("last_chapter", value).apply()
+
+    // Only set to true after the FULL KJV import transaction commits successfully.
+    // Used instead of a DB count() check so a killed/interrupted first-launch
+    // import can never be mistaken for "already loaded".
+    var bibleLoaded: Boolean
+        get() = sp.getBoolean("bible_loaded", false)
+        set(value) = sp.edit().putBoolean("bible_loaded", value).apply()
 }

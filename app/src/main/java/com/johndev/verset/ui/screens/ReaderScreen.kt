@@ -38,6 +38,8 @@ fun ReaderScreen(repository: BibleRepository, prefs: Prefs) {
     val searchResults by (if (searchQuery.trim().length >= 3) repository.search(searchQuery.trim()) else kotlinx.coroutines.flow.flowOf(emptyList()))
         .collectAsState(initial = emptyList())
 
+    val isLoadingBible by com.johndev.verset.data.BibleLoadState.isLoading.collectAsState()
+
     Column(Modifier.fillMaxSize()) {
         if (showSearch) {
             val focusRequester = remember { FocusRequester() }
@@ -102,6 +104,15 @@ fun ReaderScreen(repository: BibleRepository, prefs: Prefs) {
                 }
             }
         } else if (!showSearch) {
+            if (isLoadingBible) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                        CircularProgressIndicator()
+                        Spacer(Modifier.height(16.dp))
+                        Text("Setting up your Bible for the first time…", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            } else {
             LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
                 items(verses, key = { it.id }) { verse ->
                     val isTagged = taggedIds.contains(verse.id)
@@ -137,6 +148,7 @@ fun ReaderScreen(repository: BibleRepository, prefs: Prefs) {
                         }
                     }
                 }
+            }
             }
         }
     }
