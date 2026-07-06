@@ -10,29 +10,46 @@ import android.graphics.RectF
 import android.provider.MediaStore
 import com.johndev.verset.data.VerseTagEntry
 
+/** A named color scheme for exported verse cards. */
+enum class CardTheme(
+    val displayName: String,
+    val background: String,
+    val accent: String,
+    val bodyText: String,
+    val noteText: String
+) {
+    NAVY_GOLD("Navy & Gold", "#1B2A4A", "#C9A24B", "#FFFFFF", "#D8D8D8"),
+    PARCHMENT("Parchment", "#F4E9CD", "#8B4A2C", "#3A2E1E", "#6B5B45"),
+    CHARCOAL_ROSE("Charcoal & Rose", "#1E1E24", "#C97C7C", "#F2F2F2", "#B8B0B0"),
+    FOREST("Forest", "#1E3A2E", "#8FBF7F", "#F4F4F0", "#C4D4C0")
+}
+
 /**
  * Renders a single tagged verse (+ note) as a shareable 1080x1350 image card
  * (Instagram-portrait friendly) and saves it to the Pictures/Verset gallery folder.
  */
 object ImageCardExporter {
 
-    fun export(context: Context, entry: VerseTagEntry, tagName: String): Uri? {
+    fun export(context: Context, entry: VerseTagEntry, tagName: String, theme: CardTheme = CardTheme.NAVY_GOLD): Uri? {
         val width = 1080
         val height = 1350
         val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
 
-        // Background
-        val bgPaint = Paint().apply { color = Color.parseColor("#1B2A4A") }
-        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
+        val bgColor = Color.parseColor(theme.background)
+        val accentColor = Color.parseColor(theme.accent)
+        val bodyColor = Color.parseColor(theme.bodyText)
+        val noteColor = Color.parseColor(theme.noteText)
 
-        // Gold accent bar
-        val accentPaint = Paint().apply { color = Color.parseColor("#C9A24B") }
-        canvas.drawRect(0f, 0f, 24f, height.toFloat(), accentPaint)
+        // Background
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), Paint().apply { color = bgColor })
+
+        // Accent bar
+        canvas.drawRect(0f, 0f, 24f, height.toFloat(), Paint().apply { color = accentColor })
 
         // Tag label
         val tagPaint = Paint().apply {
-            color = Color.parseColor("#C9A24B")
+            color = accentColor
             textSize = 42f
             isFakeBoldText = true
             isAntiAlias = true
@@ -41,7 +58,7 @@ object ImageCardExporter {
 
         // Verse text (wrapped)
         val versePaint = Paint().apply {
-            color = Color.WHITE
+            color = bodyColor
             textSize = 52f
             isAntiAlias = true
         }
@@ -50,7 +67,7 @@ object ImageCardExporter {
 
         // Reference
         val refPaint = Paint().apply {
-            color = Color.parseColor("#C9A24B")
+            color = accentColor
             textSize = 40f
             isFakeBoldText = true
             isAntiAlias = true
@@ -60,7 +77,7 @@ object ImageCardExporter {
         // Note
         if (entry.note.isNotBlank()) {
             val notePaint = Paint().apply {
-                color = Color.parseColor("#D8D8D8")
+                color = noteColor
                 textSize = 32f
                 isAntiAlias = true
             }

@@ -33,6 +33,8 @@ fun MyVersesScreen(repository: BibleRepository) {
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
+    var themePickerFor by remember { mutableStateOf<VerseTagEntry?>(null) }
+
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
         Box(Modifier.padding(padding)) {
             if (selectedTag == null) {
@@ -129,22 +131,69 @@ fun MyVersesScreen(repository: BibleRepository) {
                         items(entries, key = { it.id }) { entry ->
                             EntryRow(
                                 entry = entry,
-                                onExportImage = {
-                                    val ok = ImageCardExporter.export(context, entry, tag.name) != null
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar(if (ok) "Saved image to Pictures/Verset" else "Export failed")
-                                    }
-                                },
+                                onExportImage = { themePickerFor = entry },
                                 onDelete = { scope.launch { repository.deleteEntry(entry) } },
                                 onSaveNote = { newNote -> scope.launch { repository.updateEntry(entry.copy(note = newNote)) } }
                             )
                             HorizontalDivider()
                         }
                     }
+
+                    themePickerFor?.let { entry ->
+                        ThemePickerDialog(
+                            onDismiss = { themePickerFor = null },
+                            onPick = { theme ->
+                                val ok = ImageCardExporter.export(context, entry, tag.name, theme) != null
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(if (ok) "Saved image to Pictures/Verset" else "Export failed")
+                                }
+                                themePickerFor = null
+                            }
+                        )
+                    }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun ThemePickerDialog(onDismiss: () -> Unit, onPick: (com.johndev.verset.export.CardTheme) -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Choose a card style") },
+        text = {
+            Column {
+                com.johndev.verset.export.CardTheme.values().forEach { theme ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onPick(theme) }
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    ) {
+                        Box(
+                            Modifier
+                                .size(28.dp)
+                                .background(
+                                    androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(theme.background)),
+                                    androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                                )
+                                .border(
+                                    1.dp,
+                                    androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(theme.accent)),
+                                    androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                                )
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(theme.displayName)
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
