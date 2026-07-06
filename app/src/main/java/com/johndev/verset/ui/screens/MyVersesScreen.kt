@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material3.*
@@ -39,11 +40,33 @@ fun MyVersesScreen(repository: BibleRepository) {
                 } else {
                     LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
                         items(tags, key = { it.id }) { tag ->
+                            var confirmDelete by remember { mutableStateOf(false) }
                             ListItem(
                                 headlineContent = { Text(tag.name) },
-                                modifier = Modifier.clickable { selectedTag = tag }
+                                modifier = Modifier.clickable { selectedTag = tag },
+                                trailingContent = {
+                                    IconButton(onClick = { confirmDelete = true }) {
+                                        Icon(Icons.Filled.Delete, contentDescription = "Delete tag")
+                                    }
+                                }
                             )
                             HorizontalDivider()
+                            if (confirmDelete) {
+                                AlertDialog(
+                                    onDismissRequest = { confirmDelete = false },
+                                    title = { Text("Delete \"${tag.name}\"?") },
+                                    text = { Text("This removes the tag and every verse+note saved under it. This can't be undone.") },
+                                    confirmButton = {
+                                        TextButton(onClick = {
+                                            scope.launch { repository.deleteTag(tag) }
+                                            confirmDelete = false
+                                        }) { Text("Delete") }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -82,7 +105,8 @@ fun MyVersesScreen(repository: BibleRepository) {
                                         snackbarHostState.showSnackbar(if (ok) "Saved image to Pictures/Verset" else "Export failed")
                                     }
                                 },
-                                onDelete = { scope.launch { repository.deleteEntry(entry) } }
+                                onDelete = { scope.launch { repository.deleteEntry(entry) } },
+                                onSaveNote = { newNote -> scope.launch { repository.updateEntry(entry.copy(note = newNote)) } }
                             )
                             HorizontalDivider()
                         }
@@ -94,7 +118,15 @@ fun MyVersesScreen(repository: BibleRepository) {
 }
 
 @Composable
-private fun EntryRow(entry: VerseTagEntry, onExportImage: () -> Unit, onDelete: () -> Unit) {
+private fun EntryRow(
+    entry: VerseTagEntry,
+    onExportImage: () -> Unit,
+    onDelete: () -> Unit,
+    onSaveNote: (String) -> Unit
+) {
+    var editingNote by remember { mutableStateOf(false) }
+    var draftNote by remember { mutableStateOf(entry.note) }
+
     Column(Modifier.padding(vertical = 10.dp)) {
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Text(
@@ -115,6 +147,31 @@ private fun EntryRow(entry: VerseTagEntry, onExportImage: () -> Unit, onDelete: 
                 modifier = Modifier.padding(top = 4.dp)
             )
         }
-        TextButton(onClick = onDelete) { Text("Remove") }
+        Row {
+            TextButton(onClick = { draftNote = entry.note; editingNote = true }) { Text("Edit note") }
+            TextButton(onClick = onDelete) { Text("Remove") }
+        }
+    }
+
+    if (editingNote) {
+        AlertDialog(
+            onDismissRequest = { editingNote = false },
+            title = { Text("Edit note") },
+            text = {
+                OutlinedTextField(
+                    value = draftNote,
+                    onValueChange = { draftNote = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onSaveNote(draftNote.trim())
+                    editingNote = false
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { editingNote = false }) { Text("Cancel") } }
+        )
     }
 }
