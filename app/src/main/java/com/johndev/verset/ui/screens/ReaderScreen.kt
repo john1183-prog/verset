@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -20,22 +21,31 @@ import com.johndev.verset.data.BookMeta
 import com.johndev.verset.data.Prefs
 import com.johndev.verset.data.Verse
 import com.johndev.verset.repository.BibleRepository
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReaderScreen(repository: BibleRepository, prefs: Prefs) {
     val books by repository.booksFlow().collectAsState(initial = emptyList())
-    var bookIndex by remember { mutableStateOf(prefs.lastBookIndex) }
-    var chapter by remember { mutableStateOf(prefs.lastChapter) }
-    var showPicker by remember { mutableStateOf(false) }
-    var verseToTag by remember { mutableStateOf<Verse?>(null) }
-    var showSearch by remember { mutableStateOf(false) }
-    var searchQuery by remember { mutableStateOf("") }
+    var bookIndex by rememberSaveable { mutableStateOf(prefs.lastBookIndex) }
+    var chapter by rememberSaveable { mutableStateOf(prefs.lastChapter) }
+    var showPicker by rememberSaveable { mutableStateOf(false) }
+    var verseToTag by remember { mutableStateOf<Verse?>(null) } // Verse isn't Parcelable; lost on process death, acceptable for a transient dialog
+    var showSearch by rememberSaveable { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+
+    // Debounce: only re-query the DB 300ms after the user stops typing, instead of on every keystroke.
+    var debouncedQuery by remember { mutableStateOf("") }
+    LaunchedEffect(searchQuery) {
+        delay(300)
+        debouncedQuery = searchQuery
+    }
 
     val verses by repository.chapterFlow(bookIndex, chapter).collectAsState(initial = emptyList())
-    val taggedIds by repository.taggedVerseIds().collectAsState(initial = emptyList())
+    val taggedIdsList by repository.taggedVerseIds().collectAsState(initial = emptyList())
+    val taggedIds = remember(taggedIdsList) { taggedIdsList.toSet() }
     val currentBook = books.find { it.bookIndex == bookIndex }
-    val searchResults by (if (searchQuery.trim().length >= 3) repository.search(searchQuery.trim()) else kotlinx.coroutines.flow.flowOf(emptyList()))
+    val searchResults by (if (debouncedQuery.trim().length >= 3) repository.search(debouncedQuery.trim()) else kotlinx.coroutines.flow.flowOf(emptyList()))
         .collectAsState(initial = emptyList())
 
     val isLoadingBible by com.johndev.verset.data.BibleLoadState.isLoading.collectAsState()
@@ -75,7 +85,7 @@ fun ReaderScreen(repository: BibleRepository, prefs: Prefs) {
             )
         }
 
-        if (showSearch && searchQuery.trim().length >= 3) {
+        if (showSearch && debouncedQuery.trim().length >= 3) {
             LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
                 items(searchResults, key = { it.id }) { verse ->
                     Column(

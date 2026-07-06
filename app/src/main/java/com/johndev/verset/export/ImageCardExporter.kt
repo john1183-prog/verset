@@ -85,7 +85,9 @@ object ImageCardExporter {
             drawWrappedText(canvas, entry.note, notePaint, noteBounds, lineSpacing = 42f)
         }
 
-        return saveToGallery(context, bmp, "verset_${entry.book}_${entry.chapter}_${entry.verse}")
+        val uri = saveToGallery(context, bmp, "verset_${entry.book}_${entry.chapter}_${entry.verse}")
+        bmp.recycle()
+        return uri
     }
 
     private fun drawWrappedText(canvas: Canvas, text: String, paint: Paint, bounds: RectF, lineSpacing: Float) {

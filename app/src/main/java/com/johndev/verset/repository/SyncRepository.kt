@@ -12,11 +12,19 @@ import kotlinx.coroutines.tasks.await
  * Simple last-write-wins sync: pushes locally-dirty entries/tags to
  * users/{uid}/entries and users/{uid}/tags, then pulls the full remote set
  * back down. Good enough for a single-user, few-thousand-verse workload.
+ *
+ * Writes are batched (Firestore WriteBatch, chunked at 500 — Firestore's
+ * per-batch limit) instead of one network round-trip per document, so
+ * syncing a large tag/entry set doesn't get slow as it grows.
  */
 class SyncRepository(private val db: AppDatabase) {
 
     private val firestore get() = FirebaseFirestore.getInstance()
     private fun uid(): String? = FirebaseAuth.getInstance().currentUser?.uid
+
+    private companion object {
+        const val FIRESTORE_BATCH_LIMIT = 500
+    }
 
     suspend fun syncNow(): Result<Unit> {
         val userId = uid() ?: return Result.failure(IllegalStateException("Not signed in"))
@@ -32,10 +40,15 @@ class SyncRepository(private val db: AppDatabase) {
 
     private suspend fun pushTags(userId: String) {
         val tagsCol = firestore.collection("users").document(userId).collection("tags")
-        val localTags = db.tagDao().allTags()
-        val snapshot = localTags.first()
-        for (tag in snapshot) {
-            tagsCol.document(tag.id.toString()).set(tag).await()
+        val localTags = db.tagDao().allTags().first()
+        if (localTags.isEmpty()) return
+
+        for (chunk in localTags.chunked(FIRESTORE_BATCH_LIMIT)) {
+            val batch = firestore.batch()
+            for (tag in chunk) {
+                batch.set(tagsCol.document(tag.id.toString()), tag)
+            }
+            batch.commit().await()
         }
     }
 
@@ -43,10 +56,18 @@ class SyncRepository(private val db: AppDatabase) {
         val dirty = db.entryDao().dirtyEntries()
         if (dirty.isEmpty()) return
         val entriesCol = firestore.collection("users").document(userId).collection("entries")
-        for (entry in dirty) {
-            val docId = entry.remoteId ?: entry.id.toString()
-            entriesCol.document(docId).set(entry).await()
-            db.entryDao().update(entry.copy(remoteId = docId, dirty = false))
+
+        for (chunk in dirty.chunked(FIRESTORE_BATCH_LIMIT)) {
+            val batch = firestore.batch()
+            val docIds = chunk.map { it.remoteId ?: it.id.toString() }
+            chunk.forEachIndexed { i, entry ->
+                batch.set(entriesCol.document(docIds[i]), entry)
+            }
+            batch.commit().await()
+            // Local Room writes (not network) — fine to do per-item.
+            chunk.forEachIndexed { i, entry ->
+                db.entryDao().update(entry.copy(remoteId = docIds[i], dirty = false))
+            }
         }
     }
 

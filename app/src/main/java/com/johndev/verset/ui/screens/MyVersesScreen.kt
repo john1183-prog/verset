@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -29,7 +30,8 @@ import kotlinx.coroutines.launch
 fun MyVersesScreen(repository: BibleRepository) {
     val context = LocalContext.current
     val tags by repository.tagsFlow().collectAsState(initial = emptyList())
-    var selectedTag by remember { mutableStateOf<Tag?>(null) }
+    var selectedTagId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val selectedTag = tags.find { it.id == selectedTagId }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -60,7 +62,7 @@ fun MyVersesScreen(repository: BibleRepository) {
                                     )
                                 },
                                 headlineContent = { Text(tag.name) },
-                                modifier = Modifier.clickable { selectedTag = tag },
+                                modifier = Modifier.clickable { selectedTagId = tag.id },
                                 trailingContent = {
                                     Row {
                                         IconButton(onClick = { editing = true }) {
@@ -94,8 +96,13 @@ fun MyVersesScreen(repository: BibleRepository) {
                                     tag = tag,
                                     onDismiss = { editing = false },
                                     onSave = { newName, newColor ->
-                                        scope.launch { repository.updateTag(tag.copy(name = newName, colorHex = newColor)) }
-                                        editing = false
+                                        val nameTaken = tags.any { it.id != tag.id && it.name.equals(newName, ignoreCase = true) }
+                                        if (nameTaken) {
+                                            scope.launch { snackbarHostState.showSnackbar("A tag named \"$newName\" already exists") }
+                                        } else {
+                                            scope.launch { repository.updateTag(tag.copy(name = newName, colorHex = newColor)) }
+                                            editing = false
+                                        }
                                     }
                                 )
                             }
@@ -110,7 +117,7 @@ fun MyVersesScreen(repository: BibleRepository) {
                     TopAppBar(
                         title = { Text(tag.name) },
                         navigationIcon = {
-                            IconButton(onClick = { selectedTag = null }) {
+                            IconButton(onClick = { selectedTagId = null }) {
                                 Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
                             }
                         },

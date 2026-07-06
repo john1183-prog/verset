@@ -5,6 +5,10 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 android {
     namespace = "com.johndev.verset"
     compileSdk = 35
