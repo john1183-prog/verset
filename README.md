@@ -1,43 +1,51 @@
-# Verset — a lighter, tag-first KJV Bible app
+# Verset
 
-Kotlin + Jetpack Compose. Full offline KJV (31,102 verses, bundled as a ~6MB JSON
-asset, loaded into Room on first launch — no network needed to read). Same
-CI pattern as your other repos: `gradle assembleDebug` directly, no `gradlew`.
+A lightweight, offline-first KJV Bible app for Android with a built-in system for tagging verses by theme and attaching personal notes.
 
-## What's built (v0.1 scaffold)
+## Why
 
-- **Read tab**: book/chapter picker, verse list, tap any verse to classify it.
-- **Tag a verse**: pick an existing tag or type a new one (created on the fly),
-  add a note about what the verse is about. A verse can carry multiple tags
-  (e.g. "Promise" + "Comfort"), each with its own note — matches your spec.
-- **My Verses tab**: browse by tag, see every verse + note under it, export.
-- **Export**: per-verse shareable image card (PNG, saved to Pictures/Verset),
-  and per-tag PDF document (all verses + notes, saved to Downloads/Verset).
-- **Settings tab**: reader font-size slider, dark mode / follow-system toggle,
-  Google Sign-In, manual "Sync now" button.
-- **Sync**: Firestore, last-write-wins, one collection per user
-  (`users/{uid}/entries`, `users/{uid}/tags`). Push-then-pull, triggered
-  manually from Settings for now (v0.1 — auto-sync on app open/close is an
-  easy next step).
+Most Bible apps are large, ad-heavy, or don't let you organize verses the way you actually think about them. Verset does one thing well: read the King James Bible offline, and build a personal library of verses classified however you want — "Promise," "Comfort," "Warning," anything — each with a note on why it matters to you.
 
-## Before this builds and runs for real
+## Features
 
-Two things are placeholders right now and need your actual Firebase project:
+- **Full offline KJV** — all 31,102 verses bundled with the app; no internet connection needed to read
+- **Tag and classify verses** — create your own categories on the fly (a verse can carry multiple tags, each with its own note)
+- **Verse of the Day** on the home screen, pulled from your own saved verses rather than a generic feed
+- **Chapter navigation** — previous/next chapter buttons that flow naturally across book boundaries, plus full-text search across the whole KJV
+- **Export** a tagged verse as a shareable image card (four style themes) or export a whole tag's verses and notes as a PDF
+- **Optional cloud sync** — sign in with Google to back up tags/notes and use them on a second device via Firestore; everything works fully offline without signing in
+- **Customizable reading experience** — adjustable font size, light/dark theme, custom tag colors
 
-1. **`app/google-services.json`** — currently a fake placeholder (structurally
-   valid so CI compiles, but Firebase calls will fail at runtime). Steps:
-   - Go to the [Firebase console](https://console.firebase.google.com) → Add project
-   - Add an Android app with package name `com.johndev.verset`
-   - Download the real `google-services.json` and replace the placeholder
-   - Enable **Authentication → Sign-in method → Google**
-   - Enable **Firestore Database** (start in production mode, add rules below)
+## Tech stack
 
-2. **`WEB_CLIENT_ID` in `GoogleAuthManager.kt`** — after enabling Google
-   sign-in in Firebase, copy the **Web client ID** (not the Android one) from
-   Firebase console → Authentication → Sign-in method → Google → Web SDK
-   configuration, and paste it in place of `REPLACE_WITH_YOUR_FIREBASE_WEB_CLIENT_ID`.
+- Kotlin + Jetpack Compose (Material 3)
+- Room for local storage
+- Firebase Authentication (Google Sign-In) + Cloud Firestore for sync
+- Built and verified via GitHub Actions CI on every push
 
-### Recommended Firestore security rules
+## Getting started
+
+### Prerequisites
+
+- Android Studio or the Gradle CLI, JDK 17
+- A Firebase project — only required for sign-in/sync; the app is fully usable offline without one
+
+### Build
+
+```bash
+git clone https://github.com/john1183-prog/verset.git
+cd verset
+gradle assembleDebug
+```
+
+### Enable cloud sync (optional)
+
+1. Create a project at the [Firebase console](https://console.firebase.google.com)
+2. Add an Android app with package name `com.johndev.verset`
+3. Download `google-services.json` and place it in `app/`, replacing the placeholder
+4. Enable **Authentication → Sign-in method → Google**, and enable **Firestore Database**
+5. Copy the **Web client ID** (Authentication → Sign-in method → Google → Web SDK configuration) into `GoogleAuthManager.kt`, replacing `WEB_CLIENT_ID`
+6. Add the Firestore security rules below in the Firebase console
 
 ```
 rules_version = '2';
@@ -50,49 +58,33 @@ service cloud.firestore {
 }
 ```
 
-## Package name / app name
+## Project structure
 
-Currently `com.johndev.verset`, app name "Verset" — both easy to rename
-(find/replace `com.johndev.verset`, and `<string name="app_name">` in
-`res/values/strings.xml`) before you publish anything.
+```
+app/src/main/java/com/johndev/verset/
+├── data/         Room entities, DAOs, database, local preferences
+├── repository/   BibleRepository (local data), SyncRepository (Firestore sync)
+├── auth/         Google Sign-In via Credential Manager
+├── export/       Image card and PDF exporters
+└── ui/
+    ├── screens/      Home, Read, My Verses, Settings
+    ├── navigation/   Bottom-tab nav graph
+    └── theme/        Compose theming
+```
 
-## Known gaps for next session (kept small on purpose)
+## Data source
 
-- Launcher icon is a placeholder vector — swap for real branding art.
-- Sync is manual-trigger only, no background WorkManager job yet.
-- No onboarding/first-run screen — app drops straight into Read tab (though
-  it now shows a proper loading spinner during the first-run import).
-- Search is substring match only (SQL LIKE), no fuzzy/ranked search. Room FTS4
-  would speed this up further at larger scale — not done, current debounce
-  is enough for now.
-- PDF export has one fixed layout (no theme variants like the image export does).
-- The `verseToTag` dialog state (which verse you're actively tagging) doesn't
-  survive a screen rotation mid-dialog — low-frequency edge case, accepted trade-off.
-- Room schema JSON export is enabled but the generated `app/schemas/` folder
-  isn't committed yet — happens automatically on your next local/CI build;
-  commit it once it appears so future migrations have history to diff against.
+KJV text is bundled from the public-domain KJV distribution at [aruljohn/Bible-kjv](https://github.com/aruljohn/Bible-kjv), consolidated at build-prep time into JSON assets — not fetched at runtime.
 
-## Implemented in this pass (v0.2)
+## Known limitations
 
-- Verse search, tag rename/color/delete, note editing, image export themes (see previous notes)
+- Launcher icon is a placeholder vector; needs real branding art
+- Sync is manual (tap "Sync now" in Settings); no automatic background sync yet
+- Search is substring matching, not fuzzy or ranked
+- PDF export has a single fixed layout (image export offers four style themes)
+- Tag rename blocks exact duplicate names but doesn't support merging two existing tags
+- Room schema JSON export is enabled; the `app/schemas/` folder is generated on build and should be committed once it appears, to preserve migration history for future schema changes
 
-## Implemented in the bug/performance scan (v0.3)
+## License
 
-- **Fixed**: first-launch KJV import is now atomic (single Room transaction +
-  a completion flag) — previously, killing the app mid-import could leave a
-  permanently half-populated Bible with no way to recover except clearing app data.
-- Added a loading indicator during first-launch import instead of showing an empty chapter.
-- UI state (current book/chapter, search bar, selected tag) now survives
-  screen rotation via `rememberSaveable`.
-- Search input is debounced (300ms) instead of querying the DB on every keystroke.
-- Tagged-verse lookup uses a `Set` instead of a `List` (O(1) vs O(n) per row).
-- Tag rename now blocks duplicate names instead of silently allowing two tags with the same name.
-- Firestore sync writes are batched (`WriteBatch`, chunked at 500) instead of one network round-trip per document.
-- Room schema export enabled for safer future migrations.
-- Exported bitmaps are recycled immediately after saving.
-
-## KJV data source
-
-Bundled from the public-domain KJV text distributed at
-`github.com/aruljohn/Bible-kjv`, consolidated into `assets/kjv_verses.json`
-and `assets/kjv_books.json` at build-prep time (not fetched at runtime).
+Not yet specified.
