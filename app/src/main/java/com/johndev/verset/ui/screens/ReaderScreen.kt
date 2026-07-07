@@ -7,6 +7,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,9 +25,19 @@ import com.johndev.verset.data.Verse
 import com.johndev.verset.repository.BibleRepository
 import kotlinx.coroutines.delay
 
+/**
+ * @param jumpTarget when non-null, the reader jumps to this (bookIndex, chapter)
+ *   once and then calls [onJumpConsumed] — used when Home's "Read in context"
+ *   button sends the user here to a specific verse of the day.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReaderScreen(repository: BibleRepository, prefs: Prefs) {
+fun ReaderScreen(
+    repository: BibleRepository,
+    prefs: Prefs,
+    jumpTarget: Pair<Int, Int>? = null,
+    onJumpConsumed: () -> Unit = {}
+) {
     val books by repository.booksFlow().collectAsState(initial = emptyList())
     var bookIndex by rememberSaveable { mutableStateOf(prefs.lastBookIndex) }
     var chapter by rememberSaveable { mutableStateOf(prefs.lastChapter) }
@@ -33,6 +45,16 @@ fun ReaderScreen(repository: BibleRepository, prefs: Prefs) {
     var verseToTag by remember { mutableStateOf<Verse?>(null) } // Verse isn't Parcelable; lost on process death, acceptable for a transient dialog
     var showSearch by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
+
+    LaunchedEffect(jumpTarget) {
+        jumpTarget?.let { (b, c) ->
+            bookIndex = b
+            chapter = c
+            prefs.lastBookIndex = b
+            prefs.lastChapter = c
+            onJumpConsumed()
+        }
+    }
 
     // Debounce: only re-query the DB 300ms after the user stops typing, instead of on every keystroke.
     var debouncedQuery by remember { mutableStateOf("") }
@@ -49,6 +71,32 @@ fun ReaderScreen(repository: BibleRepository, prefs: Prefs) {
         .collectAsState(initial = emptyList())
 
     val isLoadingBible by com.johndev.verset.data.BibleLoadState.isLoading.collectAsState()
+
+    fun goToChapter(newBookIndex: Int, newChapter: Int) {
+        bookIndex = newBookIndex
+        chapter = newChapter
+        prefs.lastBookIndex = newBookIndex
+        prefs.lastChapter = newChapter
+    }
+
+    fun goNext() {
+        val book = currentBook ?: return
+        if (chapter < book.chapterCount) {
+            goToChapter(bookIndex, chapter + 1)
+        } else {
+            val nextBook = books.find { it.bookIndex == bookIndex + 1 } ?: books.firstOrNull()
+            nextBook?.let { goToChapter(it.bookIndex, 1) }
+        }
+    }
+
+    fun goPrevious() {
+        if (chapter > 1) {
+            goToChapter(bookIndex, chapter - 1)
+        } else {
+            val prevBook = books.find { it.bookIndex == bookIndex - 1 } ?: books.lastOrNull()
+            prevBook?.let { goToChapter(it.bookIndex, it.chapterCount) }
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
         if (showSearch) {
@@ -116,49 +164,65 @@ fun ReaderScreen(repository: BibleRepository, prefs: Prefs) {
         } else if (!showSearch) {
             if (isLoadingBible) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator()
                         Spacer(Modifier.height(16.dp))
                         Text("Setting up your Bible for the first time…", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             } else {
-            LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-                items(verses, key = { it.id }) { verse ->
-                    val isTagged = taggedIds.contains(verse.id)
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                verseToTag = verse
-                                prefs.lastBookIndex = bookIndex
-                                prefs.lastChapter = chapter
-                            }
-                            .padding(vertical = 10.dp),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Text(
-                            "${verse.verse}",
-                            modifier = Modifier.width(28.dp),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.secondary
-                        )
-                        Text(
-                            verse.text,
-                            style = com.johndev.verset.ui.theme.readerTextStyle(prefs.fontScale),
-                            modifier = Modifier.weight(1f)
-                        )
-                        if (isTagged) {
-                            Icon(
-                                Icons.Filled.Bookmark,
-                                contentDescription = "Tagged",
-                                tint = MaterialTheme.colorScheme.secondary,
-                                modifier = Modifier.padding(start = 6.dp).size(18.dp)
+                LazyColumn(Modifier.fillMaxSize().weight(1f).padding(horizontal = 16.dp)) {
+                    items(verses, key = { it.id }) { verse ->
+                        val isTagged = taggedIds.contains(verse.id)
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    verseToTag = verse
+                                    prefs.lastBookIndex = bookIndex
+                                    prefs.lastChapter = chapter
+                                }
+                                .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Text(
+                                "${verse.verse}",
+                                modifier = Modifier.width(28.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.secondary
                             )
+                            Text(
+                                verse.text,
+                                style = com.johndev.verset.ui.theme.readerTextStyle(prefs.fontScale),
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (isTagged) {
+                                Icon(
+                                    Icons.Filled.Bookmark,
+                                    contentDescription = "Tagged",
+                                    tint = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier.padding(start = 6.dp).size(18.dp)
+                                )
+                            }
                         }
                     }
                 }
-            }
+
+                // Previous/Next chapter bar — wraps across book boundaries (e.g. end of
+                // Genesis 50 -> Exodus 1, start of Genesis 1 -> end of Revelation 22).
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    OutlinedButton(onClick = { goPrevious() }) {
+                        Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = null)
+                        Text("Previous")
+                    }
+                    OutlinedButton(onClick = { goNext() }) {
+                        Text("Next")
+                        Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null)
+                    }
+                }
             }
         }
     }
@@ -168,10 +232,7 @@ fun ReaderScreen(repository: BibleRepository, prefs: Prefs) {
             books = books,
             onDismiss = { showPicker = false },
             onSelect = { b, c ->
-                bookIndex = b
-                chapter = c
-                prefs.lastBookIndex = b
-                prefs.lastChapter = c
+                goToChapter(b, c)
                 showPicker = false
             }
         )

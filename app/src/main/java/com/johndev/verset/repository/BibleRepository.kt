@@ -14,6 +14,7 @@ class BibleRepository(private val db: AppDatabase) {
     fun entriesForTag(tagId: Long): Flow<List<VerseTagEntry>> = db.entryDao().entriesForTag(tagId)
     fun entriesForVerse(verseId: Long): Flow<List<VerseTagEntry>> = db.entryDao().entriesForVerse(verseId)
     fun taggedVerseIds(): Flow<List<Long>> = db.entryDao().taggedVerseIds()
+    fun allEntriesFlow(): Flow<List<VerseTagEntry>> = db.entryDao().allEntriesFlow()
 
     suspend fun getOrCreateTag(name: String, colorHex: String = "#4A6FA5"): Tag {
         val trimmed = name.trim()

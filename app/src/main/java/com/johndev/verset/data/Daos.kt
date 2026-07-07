@@ -76,4 +76,7 @@ interface VerseTagEntryDao {
 
     @Query("SELECT * FROM verse_tag_entries")
     suspend fun allEntriesOnce(): List<VerseTagEntry>
+
+    @Query("SELECT * FROM verse_tag_entries")
+    fun allEntriesFlow(): Flow<List<VerseTagEntry>>
 }
