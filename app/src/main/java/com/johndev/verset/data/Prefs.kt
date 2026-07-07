@@ -21,6 +21,10 @@ class Prefs(context: Context) {
         get() = sp.getInt("last_book", 0)
         set(value) = sp.edit().putInt("last_book", value).apply()
 
+    var lastSyncTimeMillis: Long
+        get() = sp.getLong("last_sync_time", 0L)
+        set(value) = sp.edit().putLong("last_sync_time", value).apply()
+
     var lastChapter: Int
         get() = sp.getInt("last_chapter", 1)
         set(value) = sp.edit().putInt("last_chapter", value).apply()
