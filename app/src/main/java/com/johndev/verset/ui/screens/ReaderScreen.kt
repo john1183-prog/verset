@@ -154,7 +154,10 @@ fun ReaderScreen(
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.secondary
                         )
-                        Text(verse.text, style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            highlightMatches(verse.text, debouncedQuery, MaterialTheme.colorScheme.secondary),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
                     }
                 }
                 if (searchResults.isEmpty()) {
@@ -244,6 +247,59 @@ fun ReaderScreen(
             repository = repository,
             onDismiss = { verseToTag = null }
         )
+    }
+}
+
+/**
+ * Builds an AnnotatedString with each word of [query] bolded and colored where it
+ * occurs in [text] (case-insensitive). Matches individual words rather than the
+ * whole phrase, so a search for "love one another" highlights each of those three
+ * words wherever they appear in the verse, not just an exact phrase match.
+ */
+private fun highlightMatches(text: String, query: String, highlightColor: androidx.compose.ui.graphics.Color): androidx.compose.ui.text.AnnotatedString {
+    val words = query.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+    if (words.isEmpty()) return androidx.compose.ui.text.AnnotatedString(text)
+
+    // Collect all match ranges (case-insensitive), then merge overlapping ones.
+    val ranges = mutableListOf<IntRange>()
+    val lowerText = text.lowercase()
+    for (word in words) {
+        val lowerWord = word.lowercase()
+        if (lowerWord.isEmpty()) continue
+        var start = 0
+        while (true) {
+            val idx = lowerText.indexOf(lowerWord, start)
+            if (idx == -1) break
+            ranges.add(idx until idx + lowerWord.length)
+            start = idx + lowerWord.length
+        }
+    }
+    val merged = ranges.sortedBy { it.first }.fold(mutableListOf<IntRange>()) { acc, r ->
+        val last = acc.lastOrNull()
+        if (last != null && r.first <= last.last + 1) {
+            acc[acc.size - 1] = last.first..maxOf(last.last, r.last)
+        } else {
+            acc.add(r)
+        }
+        acc
+    }
+
+    return androidx.compose.ui.text.buildAnnotatedString {
+        var cursor = 0
+        for (range in merged) {
+            if (range.first > cursor) append(text.substring(cursor, range.first))
+            withStyle(
+                androidx.compose.ui.text.SpanStyle(
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    color = highlightColor,
+                    background = highlightColor.copy(alpha = 0.15f)
+                )
+            ) {
+                append(text.substring(range.first, range.last + 1))
+            }
+            cursor = range.last + 1
+        }
+        if (cursor < text.length) append(text.substring(cursor))
     }
 }
 
