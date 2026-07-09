@@ -12,7 +12,8 @@ Most Bible apps are large, ad-heavy, or don't let you organize verses the way yo
 - **Tag and classify verses** — create your own categories on the fly (a verse can carry multiple tags, each with its own note)
 - **Verse of the Day** on the home screen, pulled from your own saved verses rather than a generic feed
 - **Chapter navigation** — previous/next chapter buttons that flow naturally across book boundaries, plus full-text search across the whole KJV
-- **Export** a tagged verse as a shareable image card (four style themes) or export a whole tag's verses and notes as a PDF
+- **Export** a tagged verse as a shareable image card (four style themes), export a whole tag's verses and notes as a PDF, or export everything you've saved across all tags as one combined PDF
+- **Browse by tag or see everything at once** — toggle between tag-first browsing and a flat "All Verses" view across every tag
 - **Optional cloud sync** — sign in with Google to back up tags/notes and use them on a second device via Firestore; everything works fully offline without signing in
 - **Customizable reading experience** — adjustable font size, light/dark theme, custom tag colors
 
@@ -81,7 +82,6 @@ KJV text is bundled from the public-domain KJV distribution at [aruljohn/Bible-k
 - Launcher icon is a placeholder vector; needs real branding art
 - Sync is manual (tap "Sync now" in Settings); no automatic background sync yet
 - Search is substring matching, not fuzzy or ranked
-- PDF export has a single fixed layout (image export offers four style themes)
 - Tag rename blocks exact duplicate names but doesn't support merging two existing tags
 - Room schema JSON export is enabled; the `app/schemas/` folder is generated on build and should be committed once it appears, to preserve migration history for future schema changes
 
