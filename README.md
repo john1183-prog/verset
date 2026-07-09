@@ -11,8 +11,9 @@ Most Bible apps are large, ad-heavy, or don't let you organize verses the way yo
 - **Full offline KJV** — all 31,102 verses bundled with the app; no internet connection needed to read
 - **Tag and classify verses** — create your own categories on the fly (a verse can carry multiple tags, each with its own note)
 - **Verse of the Day** on the home screen, pulled from your own saved verses rather than a generic feed
-- **Chapter navigation** — previous/next chapter buttons that flow naturally across book boundaries, plus full-text search across the whole KJV
-- **Export** a tagged verse as a shareable image card (four style themes), export a whole tag's verses and notes as a PDF, or export everything you've saved across all tags as one combined PDF
+- **Chapter navigation** — previous/next chapter buttons that flow naturally across book boundaries, plus full-text search with matched-word highlighting and reference lookup ("John 3:16" jumps straight there)
+- **Reading history** — "Recently Read" on Home, one entry per book showing your last-viewed chapter, clearable anytime
+- **Export** a tagged verse as a shareable image card (four style themes, editable text, auto-fitting font size), export a whole tag's verses and notes as a PDF, or export everything you've saved across all tags as one combined PDF
 - **Browse by tag or see everything at once** — toggle between tag-first browsing and a flat "All Verses" view across every tag
 - **Optional cloud sync** — sign in with Google to back up tags/notes and use them on a second device via Firestore; everything works fully offline without signing in
 - **Customizable reading experience** — adjustable font size, light/dark theme, custom tag colors
