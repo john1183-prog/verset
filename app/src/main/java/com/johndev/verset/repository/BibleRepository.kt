@@ -16,6 +16,12 @@ class BibleRepository(private val db: AppDatabase) {
     fun taggedVerseIds(): Flow<List<Long>> = db.entryDao().taggedVerseIds()
     fun allEntriesFlow(): Flow<List<VerseTagEntry>> = db.entryDao().allEntriesFlow()
 
+    fun historyFlow(): Flow<List<ReadingHistoryEntry>> = db.historyDao().recentFlow()
+    suspend fun recordChapterView(bookIndex: Int, book: String, chapter: Int) {
+        db.historyDao().recordView(ReadingHistoryEntry(bookIndex, book, chapter, System.currentTimeMillis()))
+    }
+    suspend fun clearHistory() = db.historyDao().clearAll()
+
     suspend fun getOrCreateTag(name: String, colorHex: String = "#4A6FA5"): Tag {
         val trimmed = name.trim()
         db.tagDao().byName(trimmed)?.let { return it }

@@ -34,6 +34,18 @@ interface BookDao {
 }
 
 @Dao
+interface ReadingHistoryDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun recordView(entry: ReadingHistoryEntry)
+
+    @Query("SELECT * FROM reading_history ORDER BY viewedAt DESC LIMIT :limit")
+    fun recentFlow(limit: Int = 20): Flow<List<ReadingHistoryEntry>>
+
+    @Query("DELETE FROM reading_history")
+    suspend fun clearAll()
+}
+
+@Dao
 interface TagDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(tag: Tag): Long

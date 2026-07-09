@@ -73,6 +73,12 @@ fun ReaderScreen(
 
     val isLoadingBible by com.johndev.verset.data.BibleLoadState.isLoading.collectAsState()
 
+    LaunchedEffect(bookIndex, chapter, currentBook) {
+        currentBook?.let { book ->
+            repository.recordChapterView(bookIndex, book.name, chapter)
+        }
+    }
+
     fun goToChapter(newBookIndex: Int, newChapter: Int) {
         bookIndex = newBookIndex
         chapter = newChapter

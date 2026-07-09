@@ -28,5 +28,13 @@ data class BookMeta(
     val chapterCount: Int
 )
 
+@Entity(tableName = "reading_history")
+data class ReadingHistoryEntry(
+    @PrimaryKey val bookIndex: Int, // one row per book — re-viewing a chapter just bumps its timestamp/chapter, no duplicate spam
+    val book: String,
+    val chapter: Int,
+    val viewedAt: Long
+)
+
 fun verseId(bookIndex: Int, chapter: Int, verse: Int): Long =
     bookIndex.toLong() * 1_000_000L + chapter.toLong() * 1_000L + verse.toLong()

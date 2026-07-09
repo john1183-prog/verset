@@ -1,7 +1,11 @@
 package com.johndev.verset.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.*
@@ -10,8 +14,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
+import com.johndev.verset.data.ReadingHistoryEntry
 import com.johndev.verset.data.VerseTagEntry
 import com.johndev.verset.repository.BibleRepository
+import kotlinx.coroutines.launch
+import java.text.DateFormat
+import java.util.Date
 import kotlin.random.Random
 
 /**
@@ -20,11 +28,18 @@ import kotlin.random.Random
  * as meaningful. It's stable for the calendar day (same verse all day, like
  * a normal verse-of-the-day feature), with a manual shuffle if you want a
  * different one without waiting for tomorrow.
+ *
+ * "Recently Read" is one row per book (most recent chapter you viewed there),
+ * not a full timestamped log of every chapter visit — keeps the list short
+ * and useful ("continue reading Genesis") instead of a noisy scroll history.
  */
 @Composable
 fun HomeScreen(repository: BibleRepository, onReadInContext: (bookIndex: Int, chapter: Int) -> Unit) {
     val entries by repository.allEntriesFlow().collectAsState(initial = emptyList())
     val tags by repository.tagsFlow().collectAsState(initial = emptyList())
+    val history by repository.historyFlow().collectAsState(initial = emptyList())
+    val scope = rememberCoroutineScope()
+    var confirmClearHistory by remember { mutableStateOf(false) }
 
     var shuffleSeed by remember { mutableStateOf(0) }
     val todayKey = remember { System.currentTimeMillis() / 86_400_000L }
@@ -38,18 +53,15 @@ fun HomeScreen(repository: BibleRepository, onReadInContext: (bookIndex: Int, ch
     }
     val pickedTagName = picked?.let { p -> tags.find { it.id == p.tagId }?.name }
 
-    Column(Modifier.fillMaxSize().padding(24.dp)) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp)) {
         Text("Verse of the Day", style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(24.dp))
 
         if (entries.isEmpty()) {
-            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                Text(
-                    "Nothing saved yet. Tag a verse in Read and it'll start showing up here.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
-            }
+            Text(
+                "Nothing saved yet. Tag a verse in Read and it'll start showing up here.",
+                style = MaterialTheme.typography.bodyMedium
+            )
         } else if (picked != null) {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(20.dp)) {
@@ -94,5 +106,64 @@ fun HomeScreen(repository: BibleRepository, onReadInContext: (bookIndex: Int, ch
                 }
             }
         }
+
+        if (history.isNotEmpty()) {
+            Spacer(Modifier.height(32.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Recently Read", style = MaterialTheme.typography.titleMedium)
+                TextButton(onClick = { confirmClearHistory = true }) { Text("Clear") }
+            }
+            Spacer(Modifier.height(8.dp))
+            Column {
+                history.forEach { h ->
+                    HistoryRow(h, onClick = { onReadInContext(h.bookIndex, h.chapter) })
+                    HorizontalDivider()
+                }
+            }
+        }
+    }
+
+    if (confirmClearHistory) {
+        AlertDialog(
+            onDismissRequest = { confirmClearHistory = false },
+            title = { Text("Clear reading history?") },
+            text = { Text("This only clears your \"Recently Read\" list — your tagged verses and notes are not affected.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch { repository.clearHistory() }
+                    confirmClearHistory = false
+                }) { Text("Clear") }
+            },
+            dismissButton = { TextButton(onClick = { confirmClearHistory = false }) { Text("Cancel") } }
+        )
+    }
+}
+
+@Composable
+private fun HistoryRow(entry: ReadingHistoryEntry, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Filled.History,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.secondary,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(Modifier.width(12.dp))
+        Text("${entry.book} ${entry.chapter}", modifier = Modifier.weight(1f))
+        Text(
+            DateFormat.getDateInstance(DateFormat.SHORT).format(Date(entry.viewedAt)),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.secondary
+        )
     }
 }

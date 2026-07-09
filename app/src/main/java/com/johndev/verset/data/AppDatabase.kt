@@ -6,8 +6,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [Verse::class, BookMeta::class, Tag::class, VerseTagEntry::class],
-    version = 1,
+    entities = [Verse::class, BookMeta::class, Tag::class, VerseTagEntry::class, ReadingHistoryEntry::class],
+    version = 2,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -15,6 +15,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun bookDao(): BookDao
     abstract fun tagDao(): TagDao
     abstract fun entryDao(): VerseTagEntryDao
+    abstract fun historyDao(): ReadingHistoryDao
 
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null
@@ -25,7 +26,12 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "verset.db"
-                ).build().also { INSTANCE = it }
+                )
+                    // Fine while the app is still pre-release/testing-only. Once this
+                    // ships to real users, replace with a proper Migration so their
+                    // tagged verses aren't wiped on a schema change.
+                    .fallbackToDestructiveMigration()
+                    .build().also { INSTANCE = it }
             }
     }
 }
