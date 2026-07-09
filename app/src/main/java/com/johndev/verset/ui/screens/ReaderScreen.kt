@@ -25,6 +25,7 @@ import com.johndev.verset.data.Prefs
 import com.johndev.verset.data.Verse
 import com.johndev.verset.repository.BibleRepository
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * @param jumpTarget when non-null, the reader jumps to this (bookIndex, chapter)
@@ -46,6 +47,7 @@ fun ReaderScreen(
     var verseToTag by remember { mutableStateOf<Verse?>(null) } // Verse isn't Parcelable; lost on process death, acceptable for a transient dialog
     var showSearch by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(jumpTarget) {
         jumpTarget?.let { (b, c) ->
@@ -70,6 +72,9 @@ fun ReaderScreen(
     val currentBook = books.find { it.bookIndex == bookIndex }
     val searchResults by (if (debouncedQuery.trim().length >= 3) repository.search(debouncedQuery.trim()) else kotlinx.coroutines.flow.flowOf(emptyList()))
         .collectAsState(initial = emptyList())
+    // Computed instantly (no debounce) since it's cheap local matching, not a DB query —
+    // lets "Go to John 3:16" appear the moment it's typeable, not after a delay.
+    val referenceMatch = remember(searchQuery, books) { parseReference(searchQuery, books) }
 
     val isLoadingBible by com.johndev.verset.data.BibleLoadState.isLoading.collectAsState()
 
@@ -140,38 +145,71 @@ fun ReaderScreen(
             )
         }
 
-        if (showSearch && debouncedQuery.trim().length >= 3) {
+        if (showSearch) {
             LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-                items(searchResults, key = { it.id }) { verse ->
-                    Column(
-                        Modifier.fillMaxWidth()
-                            .clickable {
-                                bookIndex = verse.bookIndex
-                                chapter = verse.chapter
-                                prefs.lastBookIndex = verse.bookIndex
-                                prefs.lastChapter = verse.chapter
-                                showSearch = false
-                                searchQuery = ""
-                                verseToTag = verse
-                            }
-                            .padding(vertical = 10.dp)
-                    ) {
-                        Text(
-                            "${verse.book} ${verse.chapter}:${verse.verse}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.secondary
-                        )
-                        Text(
-                            highlightMatches(verse.text, debouncedQuery, MaterialTheme.colorScheme.secondary),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
+                referenceMatch?.let { match ->
+                    item {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    goToChapter(match.book.bookIndex, match.chapter)
+                                    showSearch = false
+                                    searchQuery = ""
+                                    if (match.verse != null) {
+                                        scope.launch {
+                                            repository.getVerse(match.book.bookIndex, match.chapter, match.verse)?.let { v ->
+                                                verseToTag = v
+                                            }
+                                        }
+                                    }
+                                }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Go to ${match.book.name} ${match.chapter}${match.verse?.let { ":$it" } ?: ""}",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        HorizontalDivider()
                     }
                 }
-                if (searchResults.isEmpty()) {
-                    item { Text("No matches yet…", Modifier.padding(vertical = 16.dp)) }
+                if (debouncedQuery.trim().length >= 3) {
+                    items(searchResults, key = { it.id }) { verse ->
+                        Column(
+                            Modifier.fillMaxWidth()
+                                .clickable {
+                                    bookIndex = verse.bookIndex
+                                    chapter = verse.chapter
+                                    prefs.lastBookIndex = verse.bookIndex
+                                    prefs.lastChapter = verse.chapter
+                                    showSearch = false
+                                    searchQuery = ""
+                                    verseToTag = verse
+                                }
+                                .padding(vertical = 10.dp)
+                        ) {
+                            Text(
+                                "${verse.book} ${verse.chapter}:${verse.verse}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                            Text(
+                                highlightMatches(verse.text, debouncedQuery, MaterialTheme.colorScheme.secondary),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                    if (searchResults.isEmpty() && referenceMatch == null) {
+                        item { Text("No matches yet…", Modifier.padding(vertical = 16.dp)) }
+                    }
                 }
             }
-        } else if (!showSearch) {
+        } else {
             if (isLoadingBible) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {

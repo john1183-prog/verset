@@ -9,6 +9,8 @@ class BibleRepository(private val db: AppDatabase) {
     fun chapterFlow(bookIndex: Int, chapter: Int): Flow<List<Verse>> =
         db.verseDao().versesInChapter(bookIndex, chapter)
     fun search(query: String): Flow<List<Verse>> = db.verseDao().search(query)
+    suspend fun getVerse(bookIndex: Int, chapter: Int, verse: Int): Verse? =
+        db.verseDao().byId(verseId(bookIndex, chapter, verse))
 
     fun tagsFlow(): Flow<List<Tag>> = db.tagDao().allTags()
     fun entriesForTag(tagId: Long): Flow<List<VerseTagEntry>> = db.entryDao().entriesForTag(tagId)
