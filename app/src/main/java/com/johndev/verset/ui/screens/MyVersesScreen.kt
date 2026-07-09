@@ -30,8 +30,10 @@ import kotlinx.coroutines.launch
 fun MyVersesScreen(repository: BibleRepository) {
     val context = LocalContext.current
     val tags by repository.tagsFlow().collectAsState(initial = emptyList())
+    val allEntries by repository.allEntriesFlow().collectAsState(initial = emptyList())
     var selectedTagId by rememberSaveable { mutableStateOf<Long?>(null) }
     val selectedTag = tags.find { it.id == selectedTagId }
+    var showAllVerses by rememberSaveable { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -40,71 +42,113 @@ fun MyVersesScreen(repository: BibleRepository) {
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
         Box(Modifier.padding(padding)) {
             if (selectedTag == null) {
-                if (tags.isEmpty()) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                        Text("No tags yet. Tap a verse in Read to classify it.", style = MaterialTheme.typography.bodyMedium)
-                    }
-                } else {
-                    LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
-                        items(tags, key = { it.id }) { tag ->
-                            var confirmDelete by remember { mutableStateOf(false) }
-                            var editing by remember { mutableStateOf(false) }
-                            ListItem(
-                                leadingContent = {
-                                    Box(
-                                        Modifier
-                                            .size(18.dp)
-                                            .background(
-                                                color = runCatching { androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(tag.colorHex)) }
-                                                    .getOrDefault(MaterialTheme.colorScheme.secondary),
-                                                shape = androidx.compose.foundation.shape.CircleShape
-                                            )
-                                    )
-                                },
-                                headlineContent = { Text(tag.name) },
-                                modifier = Modifier.clickable { selectedTagId = tag.id },
-                                trailingContent = {
-                                    Row {
-                                        IconButton(onClick = { editing = true }) {
-                                            Icon(Icons.Filled.Edit, contentDescription = "Edit tag")
-                                        }
-                                        IconButton(onClick = { confirmDelete = true }) {
-                                            Icon(Icons.Filled.Delete, contentDescription = "Delete tag")
-                                        }
-                                    }
-                                }
+                Column(Modifier.fillMaxSize()) {
+                    // Tags / All Verses toggle, plus "export everything" — only useful once
+                    // there's actually something saved.
+                    if (tags.isNotEmpty()) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                        ) {
+                            SingleChoiceSegment(
+                                options = listOf("By Tag", "All Verses"),
+                                selectedIndex = if (showAllVerses) 1 else 0,
+                                onSelect = { showAllVerses = it == 1 }
                             )
-                            HorizontalDivider()
-                            if (confirmDelete) {
-                                AlertDialog(
-                                    onDismissRequest = { confirmDelete = false },
-                                    title = { Text("Delete \"${tag.name}\"?") },
-                                    text = { Text("This removes the tag and every verse+note saved under it. This can't be undone.") },
-                                    confirmButton = {
-                                        TextButton(onClick = {
-                                            scope.launch { repository.deleteTag(tag) }
-                                            confirmDelete = false
-                                        }) { Text("Delete") }
-                                    },
-                                    dismissButton = {
-                                        TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
-                                    }
+                            IconButton(onClick = {
+                                val pairs = allEntries.mapNotNull { e -> tags.find { it.id == e.tagId }?.let { e to it } }
+                                val ok = PdfExporter.export(context, "All Saved Verses", pairs) != null
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(if (ok) "Saved PDF to Downloads/Verset" else "Export failed")
+                                }
+                            }) { Icon(Icons.Filled.PictureAsPdf, contentDescription = "Export everything as PDF") }
+                        }
+                    }
+
+                    if (tags.isEmpty()) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                            Text("No tags yet. Tap a verse in Read to classify it.", style = MaterialTheme.typography.bodyMedium)
+                        }
+                    } else if (showAllVerses) {
+                        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+                            items(allEntries, key = { it.id }) { entry ->
+                                val tagName = tags.find { it.id == entry.tagId }?.name ?: "?"
+                                EntryRow(
+                                    entry = entry,
+                                    tagNameLabel = tagName,
+                                    onExportImage = { themePickerFor = entry },
+                                    onDelete = { scope.launch { repository.deleteEntry(entry) } },
+                                    onSaveNote = { newNote -> scope.launch { repository.updateEntry(entry.copy(note = newNote)) } }
                                 )
+                                HorizontalDivider()
                             }
-                            if (editing) {
-                                EditTagDialog(
-                                    tag = tag,
-                                    onDismiss = { editing = false },
-                                    onSave = { newName, newColor ->
-                                        val nameTaken = tags.any { it.id != tag.id && it.name.equals(newName, ignoreCase = true) }
-                                        if (nameTaken) {
-                                            scope.launch { snackbarHostState.showSnackbar("A tag named \"$newName\" already exists") }
-                                        } else {
-                                            scope.launch { repository.updateTag(tag.copy(name = newName, colorHex = newColor)) }
-                                            editing = false
+                            if (allEntries.isEmpty()) {
+                                item { Text("Nothing saved yet.", Modifier.padding(vertical = 16.dp)) }
+                            }
+                        }
+                    } else {
+                        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+                            items(tags, key = { it.id }) { tag ->
+                                var confirmDelete by remember { mutableStateOf(false) }
+                                var editing by remember { mutableStateOf(false) }
+                                ListItem(
+                                    leadingContent = {
+                                        Box(
+                                            Modifier
+                                                .size(18.dp)
+                                                .background(
+                                                    color = runCatching { androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(tag.colorHex)) }
+                                                        .getOrDefault(MaterialTheme.colorScheme.secondary),
+                                                    shape = androidx.compose.foundation.shape.CircleShape
+                                                )
+                                        )
+                                    },
+                                    headlineContent = { Text(tag.name) },
+                                    modifier = Modifier.clickable { selectedTagId = tag.id },
+                                    trailingContent = {
+                                        Row {
+                                            IconButton(onClick = { editing = true }) {
+                                                Icon(Icons.Filled.Edit, contentDescription = "Edit tag")
+                                            }
+                                            IconButton(onClick = { confirmDelete = true }) {
+                                                Icon(Icons.Filled.Delete, contentDescription = "Delete tag")
+                                            }
                                         }
                                     }
                                 )
+                                HorizontalDivider()
+                                if (confirmDelete) {
+                                    AlertDialog(
+                                        onDismissRequest = { confirmDelete = false },
+                                        title = { Text("Delete \"${tag.name}\"?") },
+                                        text = { Text("This removes the tag and every verse+note saved under it. This can't be undone.") },
+                                        confirmButton = {
+                                            TextButton(onClick = {
+                                                scope.launch { repository.deleteTag(tag) }
+                                                confirmDelete = false
+                                            }) { Text("Delete") }
+                                        },
+                                        dismissButton = {
+                                            TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
+                                        }
+                                    )
+                                }
+                                if (editing) {
+                                    EditTagDialog(
+                                        tag = tag,
+                                        onDismiss = { editing = false },
+                                        onSave = { newName, newColor ->
+                                            val nameTaken = tags.any { it.id != tag.id && it.name.equals(newName, ignoreCase = true) }
+                                            if (nameTaken) {
+                                                scope.launch { snackbarHostState.showSnackbar("A tag named \"$newName\" already exists") }
+                                            } else {
+                                                scope.launch { repository.updateTag(tag.copy(name = newName, colorHex = newColor)) }
+                                                editing = false
+                                            }
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -138,6 +182,7 @@ fun MyVersesScreen(repository: BibleRepository) {
                         items(entries, key = { it.id }) { entry ->
                             EntryRow(
                                 entry = entry,
+                                tagNameLabel = null,
                                 onExportImage = { themePickerFor = entry },
                                 onDelete = { scope.launch { repository.deleteEntry(entry) } },
                                 onSaveNote = { newNote -> scope.launch { repository.updateEntry(entry.copy(note = newNote)) } }
@@ -159,6 +204,52 @@ fun MyVersesScreen(repository: BibleRepository) {
                         )
                     }
                 }
+            }
+
+            // Theme picker also needs to work when triggered from the "All Verses" flat
+            // list, where there's no single `tag` in scope — look the tag up by id.
+            if (selectedTag == null) {
+                themePickerFor?.let { entry ->
+                    val entryTagName = tags.find { it.id == entry.tagId }?.name ?: "Verset"
+                    ThemePickerDialog(
+                        onDismiss = { themePickerFor = null },
+                        onPick = { theme ->
+                            val ok = ImageCardExporter.export(context, entry, entryTagName, theme) != null
+                            scope.launch {
+                                snackbarHostState.showSnackbar(if (ok) "Saved image to Pictures/Verset" else "Export failed")
+                            }
+                            themePickerFor = null
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SingleChoiceSegment(options: List<String>, selectedIndex: Int, onSelect: (Int) -> Unit) {
+    Row(
+        Modifier
+            .background(MaterialTheme.colorScheme.surfaceVariant, androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
+            .padding(4.dp)
+    ) {
+        options.forEachIndexed { i, label ->
+            val selected = i == selectedIndex
+            Box(
+                Modifier
+                    .clickable { onSelect(i) }
+                    .background(
+                        if (selected) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent,
+                        androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+                    )
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
@@ -259,6 +350,7 @@ private fun EditTagDialog(tag: Tag, onDismiss: () -> Unit, onSave: (name: String
 @Composable
 private fun EntryRow(
     entry: VerseTagEntry,
+    tagNameLabel: String?,
     onExportImage: () -> Unit,
     onDelete: () -> Unit,
     onSaveNote: (String) -> Unit
@@ -267,6 +359,13 @@ private fun EntryRow(
     var draftNote by remember { mutableStateOf(entry.note) }
 
     Column(Modifier.padding(vertical = 10.dp)) {
+        if (tagNameLabel != null) {
+            Text(
+                tagNameLabel.uppercase(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.secondary
+            )
+        }
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Text(
                 "${entry.book} ${entry.chapter}:${entry.verse}",
