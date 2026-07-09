@@ -38,6 +38,17 @@ fun MyVersesScreen(repository: BibleRepository) {
     val scope = rememberCoroutineScope()
 
     var themePickerFor by remember { mutableStateOf<VerseTagEntry?>(null) }
+    var exportDraft by remember { mutableStateOf<ExportDraft?>(null) }
+
+    fun beginExport(entry: VerseTagEntry, tagLabel: String, theme: com.johndev.verset.export.CardTheme) {
+        exportDraft = ExportDraft(
+            reference = "— ${entry.book} ${entry.chapter}:${entry.verse}",
+            verseText = entry.verseText,
+            note = entry.note,
+            tagLabel = tagLabel,
+            theme = theme
+        )
+    }
 
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
         Box(Modifier.padding(padding)) {
@@ -195,10 +206,7 @@ fun MyVersesScreen(repository: BibleRepository) {
                         ThemePickerDialog(
                             onDismiss = { themePickerFor = null },
                             onPick = { theme ->
-                                val ok = ImageCardExporter.export(context, entry, tag.name, theme) != null
-                                scope.launch {
-                                    snackbarHostState.showSnackbar(if (ok) "Saved image to Pictures/Verset" else "Export failed")
-                                }
+                                beginExport(entry, tag.name, theme)
                                 themePickerFor = null
                             }
                         )
@@ -214,14 +222,27 @@ fun MyVersesScreen(repository: BibleRepository) {
                     ThemePickerDialog(
                         onDismiss = { themePickerFor = null },
                         onPick = { theme ->
-                            val ok = ImageCardExporter.export(context, entry, entryTagName, theme) != null
-                            scope.launch {
-                                snackbarHostState.showSnackbar(if (ok) "Saved image to Pictures/Verset" else "Export failed")
-                            }
+                            beginExport(entry, entryTagName, theme)
                             themePickerFor = null
                         }
                     )
                 }
+            }
+
+            exportDraft?.let { draft ->
+                EditableExportDialog(
+                    draft = draft,
+                    onDismiss = { exportDraft = null },
+                    onExport = { edited ->
+                        val ok = ImageCardExporter.export(
+                            context, edited.reference, edited.verseText, edited.note, edited.tagLabel, edited.theme
+                        ) != null
+                        scope.launch {
+                            snackbarHostState.showSnackbar(if (ok) "Saved image to Pictures/Verset" else "Export failed")
+                        }
+                        exportDraft = null
+                    }
+                )
             }
         }
     }
@@ -253,6 +274,64 @@ private fun SingleChoiceSegment(options: List<String>, selectedIndex: Int, onSel
             }
         }
     }
+}
+
+private data class ExportDraft(
+    val reference: String,
+    val verseText: String,
+    val note: String,
+    val tagLabel: String,
+    val theme: com.johndev.verset.export.CardTheme
+)
+
+/**
+ * Shown after picking a card style — lets you tweak the reference, verse text,
+ * or note before the image is actually generated. The exporter auto-fits font
+ * size to whatever text ends up here, so edits (shorter/longer) still render well.
+ */
+@Composable
+private fun EditableExportDialog(draft: ExportDraft, onDismiss: () -> Unit, onExport: (ExportDraft) -> Unit) {
+    var reference by remember { mutableStateOf(draft.reference) }
+    var verseText by remember { mutableStateOf(draft.verseText) }
+    var note by remember { mutableStateOf(draft.note) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit before exporting") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = reference,
+                    onValueChange = { reference = it },
+                    label = { Text("Reference") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = verseText,
+                    onValueChange = { verseText = it },
+                    label = { Text("Verse text") },
+                    minLines = 3,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    label = { Text("Note (optional)") },
+                    minLines = 2,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onExport(draft.copy(reference = reference.trim(), verseText = verseText.trim(), note = note.trim()))
+            }) { Text("Export") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 @Composable
