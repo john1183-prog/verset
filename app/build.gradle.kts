@@ -82,6 +82,13 @@ dependencies {
 
     // JSON parsing for the bundled KJV asset uses org.json, built into the Android SDK — no extra dependency needed.
 
+    // WorkManager for background auto-sync
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
+
+    // Glance for home-screen widget
+    implementation("androidx.glance:glance-appwidget:1.1.1")
+    implementation("androidx.glance:glance-material3:1.1.1")
+
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.10.00"))

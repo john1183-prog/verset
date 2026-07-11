@@ -20,5 +20,10 @@ class VersetApp : Application() {
         CoroutineScope(Dispatchers.IO).launch {
             BibleLoader.loadIfNeeded(this@VersetApp, db, prefs)
         }
+        // Re-schedule the periodic sync job every launch (idempotent with KEEP policy)
+        // so it survives device reboots. Only runs if actually signed in.
+        if (com.google.firebase.auth.FirebaseAuth.getInstance().currentUser != null) {
+            com.johndev.verset.sync.SyncWorker.schedule(this)
+        }
     }
 }

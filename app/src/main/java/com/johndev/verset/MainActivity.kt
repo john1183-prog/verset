@@ -25,17 +25,25 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             var darkMode by remember { mutableStateOf(if (prefs.followSystemTheme) null else prefs.darkMode) }
+            var onboardingDone by remember { mutableStateOf(prefs.onboardingComplete) }
             VersetTheme(darkTheme = darkMode ?: isSystemInDarkTheme()) {
-                VersetNavGraph(
-                    repository = repository,
-                    syncRepository = syncRepository,
-                    prefs = prefs,
-                    onDarkModeChange = { follow, dark ->
-                        prefs.followSystemTheme = follow
-                        prefs.darkMode = dark
-                        darkMode = if (follow) null else dark
-                    }
-                )
+                if (!onboardingDone) {
+                    com.johndev.verset.ui.screens.OnboardingScreen(onFinish = {
+                        prefs.onboardingComplete = true
+                        onboardingDone = true
+                    })
+                } else {
+                    VersetNavGraph(
+                        repository = repository,
+                        syncRepository = syncRepository,
+                        prefs = prefs,
+                        onDarkModeChange = { follow, dark ->
+                            prefs.followSystemTheme = follow
+                            prefs.darkMode = dark
+                            darkMode = if (follow) null else dark
+                        }
+                    )
+                }
             }
         }
     }

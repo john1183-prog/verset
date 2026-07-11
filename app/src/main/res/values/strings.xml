@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Verset</string>
+    <string name="widget_description">Shows your verse of the day from your saved verses</string>
 </resources>

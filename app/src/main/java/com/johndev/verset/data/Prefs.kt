@@ -25,6 +25,10 @@ class Prefs(context: Context) {
         get() = sp.getLong("last_sync_time", 0L)
         set(value) = sp.edit().putLong("last_sync_time", value).apply()
 
+    var onboardingComplete: Boolean
+        get() = sp.getBoolean("onboarding_done", false)
+        set(value) = sp.edit().putBoolean("onboarding_done", value).apply()
+
     var lastChapter: Int
         get() = sp.getInt("last_chapter", 1)
         set(value) = sp.edit().putInt("last_chapter", value).apply()

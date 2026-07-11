@@ -1,12 +1,19 @@
 package com.johndev.verset.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Search
@@ -15,8 +22,10 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -77,6 +86,20 @@ fun ReaderScreen(
     val referenceMatch = remember(searchQuery, books) { parseReference(searchQuery, books) }
 
     val isLoadingBible by com.johndev.verset.data.BibleLoadState.isLoading.collectAsState()
+
+    // When a search result or reference jump lands on a specific verse, we scroll the
+    // chapter list to that verse instead of just loading the chapter at the top.
+    var scrollToVerse by remember { mutableStateOf<Int?>(null) }
+    val listState = rememberLazyListState()
+    LaunchedEffect(scrollToVerse, verses) {
+        val target = scrollToVerse ?: return@LaunchedEffect
+        if (verses.isEmpty()) return@LaunchedEffect
+        val idx = verses.indexOfFirst { it.verse == target }
+        if (idx >= 0) {
+            listState.animateScrollToItem(idx)
+            scrollToVerse = null
+        }
+    }
 
     LaunchedEffect(bookIndex, chapter, currentBook) {
         currentBook?.let { book ->
@@ -156,13 +179,7 @@ fun ReaderScreen(
                                     goToChapter(match.book.bookIndex, match.chapter)
                                     showSearch = false
                                     searchQuery = ""
-                                    if (match.verse != null) {
-                                        scope.launch {
-                                            repository.getVerse(match.book.bookIndex, match.chapter, match.verse)?.let { v ->
-                                                verseToTag = v
-                                            }
-                                        }
-                                    }
+                                    if (match.verse != null) scrollToVerse = match.verse
                                 }
                                 .padding(vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -179,17 +196,14 @@ fun ReaderScreen(
                     }
                 }
                 if (debouncedQuery.trim().length >= 3) {
-                    items(searchResults, key = { it.id }) { verse ->
+                    androidx.compose.foundation.lazy.items(searchResults, key = { it.id }) { verse ->
                         Column(
                             Modifier.fillMaxWidth()
                                 .clickable {
-                                    bookIndex = verse.bookIndex
-                                    chapter = verse.chapter
-                                    prefs.lastBookIndex = verse.bookIndex
-                                    prefs.lastChapter = verse.chapter
+                                    goToChapter(verse.bookIndex, verse.chapter)
+                                    scrollToVerse = verse.verse
                                     showSearch = false
                                     searchQuery = ""
-                                    verseToTag = verse
                                 }
                                 .padding(vertical = 10.dp)
                         ) {
@@ -219,17 +233,18 @@ fun ReaderScreen(
                     }
                 }
             } else {
-                LazyColumn(Modifier.fillMaxSize().weight(1f).padding(horizontal = 16.dp)) {
-                    items(verses, key = { it.id }) { verse ->
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.weight(1f).padding(horizontal = 16.dp)
+                ) {
+                    itemsIndexed(verses, key = { _, v -> v.id }) { _, verse ->
                         val isTagged = taggedIds.contains(verse.id)
+                        val context = LocalContext.current
+                        var showVerseMenu by remember { mutableStateOf(false) }
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    verseToTag = verse
-                                    prefs.lastBookIndex = bookIndex
-                                    prefs.lastChapter = chapter
-                                }
+                                .clickable { showVerseMenu = true }
                                 .padding(vertical = 10.dp),
                             verticalAlignment = Alignment.Top
                         ) {
@@ -252,6 +267,14 @@ fun ReaderScreen(
                                     modifier = Modifier.padding(start = 6.dp).size(18.dp)
                                 )
                             }
+                        }
+                        if (showVerseMenu) {
+                            VerseActionMenu(
+                                verse = verse,
+                                repository = repository,
+                                onDismiss = { showVerseMenu = false },
+                                onTag = { verseToTag = verse; showVerseMenu = false }
+                            )
                         }
                     }
                 }
@@ -348,6 +371,66 @@ private fun highlightMatches(text: String, query: String, highlightColor: androi
     }
 }
 
+/**
+ * Bottom-sheet-style action menu shown when a user taps a verse.
+ * "Share as text" shares immediately and auto-tags the verse under "Shared".
+ * "Tag / classify…" opens the full tagging dialog.
+ */
+@Composable
+private fun VerseActionMenu(
+    verse: Verse,
+    repository: BibleRepository,
+    onDismiss: () -> Unit,
+    onTag: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    suspend fun autoTag() {
+        val sharedTag = repository.getOrCreateTag("Shared", "#6B4A8B")
+        repository.saveEntry(verse, sharedTag.id, "")
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("${verse.book} ${verse.chapter}:${verse.verse}") },
+        text = {
+            Column {
+                Text(
+                    verse.text,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                TextButton(
+                    onClick = {
+                        val textToShare = "\"${verse.text}\"\n— ${verse.book} ${verse.chapter}:${verse.verse}"
+                        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(android.content.Intent.EXTRA_TEXT, textToShare)
+                        }
+                        context.startActivity(android.content.Intent.createChooser(intent, "Share verse"))
+                        scope.launch { autoTag() }
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Filled.IosShare, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Share as text")
+                }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                TextButton(onClick = { onTag() }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Filled.Bookmark, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Tag / classify…")
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
 @Composable
 private fun BookChapterPicker(
     books: List<BookMeta>,
@@ -364,7 +447,7 @@ private fun BookChapterPicker(
         text = {
             if (selectedBook == null) {
                 LazyColumn(Modifier.height(400.dp)) {
-                    items(books, key = { it.bookIndex }) { book ->
+                    androidx.compose.foundation.lazy.items(books, key = { it.bookIndex }) { book ->
                         Text(
                             book.name,
                             Modifier.fillMaxWidth().clickable { selectedBook = book }.padding(vertical = 10.dp)
@@ -373,15 +456,25 @@ private fun BookChapterPicker(
                 }
             } else {
                 val book = selectedBook!!
-                LazyColumn(Modifier.height(400.dp)) {
-                    items((1..book.chapterCount).toList()) { chapterNum ->
-                        Text(
-                            "Chapter $chapterNum",
-                            Modifier.fillMaxWidth()
-                                .clickable { onSelect(book.bookIndex, chapterNum) }
-                                .padding(vertical = 10.dp),
-                            textAlign = TextAlign.Start
-                        )
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(5),
+                    modifier = Modifier.height(400.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    androidx.compose.foundation.lazy.grid.items(
+                        items = (1..book.chapterCount).toList()
+                    ) { chapterNum ->
+                        Box(
+                            Modifier
+                                .aspectRatio(1f)
+                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .clickable { onSelect(book.bookIndex, chapterNum) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("$chapterNum", style = MaterialTheme.typography.bodyMedium)
+                        }
                     }
                 }
             }

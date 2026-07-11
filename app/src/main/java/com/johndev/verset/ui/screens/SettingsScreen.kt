@@ -121,6 +121,7 @@ fun SettingsScreen(
                 scope.launch {
                     val result = GoogleAuthManager.signIn(context)
                     signedIn = result.isSuccess
+                    if (result.isSuccess) com.johndev.verset.sync.SyncWorker.schedule(context)
                     statusMessage = if (result.isSuccess) "Signed in" else "Sign-in failed: ${result.exceptionOrNull()?.message}"
                 }
             }) { Text("Sign in with Google") }
@@ -146,6 +147,7 @@ fun SettingsScreen(
             Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick = {
                 GoogleAuthManager.signOut()
+                com.johndev.verset.sync.SyncWorker.cancel(context)
                 signedIn = false
             }) { Text("Sign out") }
         }

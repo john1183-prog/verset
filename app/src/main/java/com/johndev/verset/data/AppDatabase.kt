@@ -4,6 +4,23 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
+
+private val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS reading_history (
+                bookIndex INTEGER NOT NULL PRIMARY KEY,
+                book TEXT NOT NULL,
+                chapter INTEGER NOT NULL,
+                viewedAt INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+    }
+}
 
 @Database(
     entities = [Verse::class, BookMeta::class, Tag::class, VerseTagEntry::class, ReadingHistoryEntry::class],
@@ -27,10 +44,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "verset.db"
                 )
-                    // Fine while the app is still pre-release/testing-only. Once this
-                    // ships to real users, replace with a proper Migration so their
-                    // tagged verses aren't wiped on a schema change.
-                    .fallbackToDestructiveMigration()
+                    .addMigrations(MIGRATION_1_2)
                     .build().also { INSTANCE = it }
             }
     }
