@@ -7,8 +7,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.items as lazyItems
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as lazyGridItems
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
@@ -196,7 +198,7 @@ fun ReaderScreen(
                     }
                 }
                 if (debouncedQuery.trim().length >= 3) {
-                    androidx.compose.foundation.lazy.items(searchResults, key = { it.id }) { verse ->
+                    lazyItems(searchResults, key = { it.id }) { verse ->
                         Column(
                             Modifier.fillMaxWidth()
                                 .clickable {
@@ -447,7 +449,7 @@ private fun BookChapterPicker(
         text = {
             if (selectedBook == null) {
                 LazyColumn(Modifier.height(400.dp)) {
-                    androidx.compose.foundation.lazy.items(books, key = { it.bookIndex }) { book ->
+                    lazyItems(books, key = { it.bookIndex }) { book ->
                         Text(
                             book.name,
                             Modifier.fillMaxWidth().clickable { selectedBook = book }.padding(vertical = 10.dp)
@@ -462,7 +464,7 @@ private fun BookChapterPicker(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    androidx.compose.foundation.lazy.grid.items(
+                    lazyGridItems(
                         items = (1..book.chapterCount).toList()
                     ) { chapterNum ->
                         Box(
