@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.IosShare
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -29,7 +29,7 @@ private val pages = listOf(
         "Tap any verse and choose Tag / classify… to add it to a category you create — like \"Promise\", \"Comfort\", or anything that fits how you think. A verse can have multiple tags, each with its own note. Find everything you've saved in the My Verses tab."
     ),
     OnboardingPage(
-        Icons.Filled.IosShare,
+        Icons.Filled.Share,
         "Share without friction",
         "Tap any verse and choose Share as text to send it immediately. Your verse gets automatically added to a \"Shared\" tag so you always have a record of what you've shared. Export a full tagged list as an image card or PDF from My Verses."
     )
