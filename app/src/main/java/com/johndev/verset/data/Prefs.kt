@@ -29,6 +29,14 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("onboarding_done", false)
         set(value) = sp.edit().putBoolean("onboarding_done", value).apply()
 
+    /**
+     * The Firebase Web Client ID entered by the app developer in the sync setup screen.
+     * Empty until configured — the app checks for this before allowing sign-in.
+     */
+    var webClientId: String
+        get() = sp.getString("web_client_id", "") ?: ""
+        set(value) = sp.edit().putString("web_client_id", value).apply()
+
     var lastChapter: Int
         get() = sp.getInt("last_chapter", 1)
         set(value) = sp.edit().putInt("last_chapter", value).apply()

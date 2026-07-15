@@ -6,37 +6,39 @@ import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
+import com.johndev.verset.data.Prefs
 import kotlinx.coroutines.tasks.await
 
-/**
- * Google Sign-In via Credential Manager -> Firebase Auth.
- *
- * WEB_CLIENT_ID must be replaced with the "Web client" OAuth client ID from your
- * Firebase project (Firebase console -> Authentication -> Sign-in method -> Google
- * -> Web SDK configuration). This is NOT the Android client ID.
- */
 object GoogleAuthManager {
 
-    private const val WEB_CLIENT_ID = "REPLACE_WITH_YOUR_FIREBASE_WEB_CLIENT_ID"
+    /**
+     * Returns true if the bundled google-services.json is still the placeholder.
+     * Detected by checking the Firebase project ID at runtime — lets the UI show
+     * a clear error instead of a cryptic sign-in failure.
+     */
+    fun isPlaceholderConfig(): Boolean {
+        return try {
+            FirebaseApp.getInstance().options.projectId == "verset-placeholder"
+        } catch (e: Exception) {
+            true
+        }
+    }
 
-    suspend fun signIn(context: Context): Result<Unit> {
+    suspend fun signIn(context: Context, webClientId: String): Result<Unit> {
         return try {
             val credentialManager = CredentialManager.create(context)
-
             val googleIdOption = GetGoogleIdOption.Builder()
                 .setFilterByAuthorizedAccounts(false)
-                .setServerClientId(WEB_CLIENT_ID)
+                .setServerClientId(webClientId)
                 .build()
-
             val request = GetCredentialRequest.Builder()
                 .addCredentialOption(googleIdOption)
                 .build()
-
             val result = credentialManager.getCredential(context, request)
             val googleIdCredential = GoogleIdTokenCredential.createFrom(result.credential.data)
-
             val firebaseCredential = GoogleAuthProvider.getCredential(googleIdCredential.idToken, null)
             FirebaseAuth.getInstance().signInWithCredential(firebaseCredential).await()
             Result.success(Unit)
@@ -47,10 +49,7 @@ object GoogleAuthManager {
         }
     }
 
-    fun signOut() {
-        FirebaseAuth.getInstance().signOut()
-    }
-
+    fun signOut() = FirebaseAuth.getInstance().signOut()
     fun currentUserId(): String? = FirebaseAuth.getInstance().currentUser?.uid
     fun isSignedIn(): Boolean = FirebaseAuth.getInstance().currentUser != null
 }
