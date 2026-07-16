@@ -43,6 +43,7 @@ sealed class SearchLevel {
     data class Verses(val book: BookMeta, val chapter: Int, val verses: List<Verse>) : SearchLevel()
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchPanel(
     query: String,
@@ -230,8 +231,7 @@ fun SearchPanel(
                         ) {
                             Text(
                                 "$ch",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
                             )
                         }
                     }
