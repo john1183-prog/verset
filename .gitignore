@@ -8,3 +8,7 @@
 .externalNativeBuild
 .cxx
 *.apk
+# Keep the placeholder google-services.json tracked (it has no real credentials).
+# When you replace it with your real Firebase config, add the real file as
+# a GitHub Secret (GOOGLE_SERVICES_JSON) instead of committing it.
+# app/google-services.json  ← intentionally not ignored so placeholder builds work

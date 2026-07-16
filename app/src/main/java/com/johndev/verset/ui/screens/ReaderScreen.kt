@@ -4,16 +4,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items as lazyItems
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items as lazyGridItems
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
@@ -24,11 +19,9 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.johndev.verset.data.BookMeta
@@ -171,60 +164,19 @@ fun ReaderScreen(
         }
 
         if (showSearch) {
-            LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-                referenceMatch?.let { match ->
-                    item {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    goToChapter(match.book.bookIndex, match.chapter)
-                                    showSearch = false
-                                    searchQuery = ""
-                                    if (match.verse != null) scrollToVerse = match.verse
-                                }
-                                .padding(vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                "Go to ${match.book.name} ${match.chapter}${match.verse?.let { ":$it" } ?: ""}",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        HorizontalDivider()
-                    }
-                }
-                if (debouncedQuery.trim().length >= 3) {
-                    lazyItems(searchResults, key = { it.id }) { verse ->
-                        Column(
-                            Modifier.fillMaxWidth()
-                                .clickable {
-                                    goToChapter(verse.bookIndex, verse.chapter)
-                                    scrollToVerse = verse.verse
-                                    showSearch = false
-                                    searchQuery = ""
-                                }
-                                .padding(vertical = 10.dp)
-                        ) {
-                            Text(
-                                "${verse.book} ${verse.chapter}:${verse.verse}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.secondary
-                            )
-                            Text(
-                                highlightMatches(verse.text, debouncedQuery, MaterialTheme.colorScheme.secondary),
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-                    }
-                    if (searchResults.isEmpty() && referenceMatch == null) {
-                        item { Text("No matches yet…", Modifier.padding(vertical = 16.dp)) }
-                    }
-                }
-            }
+            SearchPanel(
+                query = searchQuery,
+                books = books,
+                searchResults = searchResults,
+                referenceMatch = referenceMatch,
+                onNavigate = { bIdx, ch, verseNum ->
+                    goToChapter(bIdx, ch)
+                    if (verseNum != null) scrollToVerse = verseNum
+                    showSearch = false
+                    searchQuery = ""
+                },
+                modifier = Modifier.fillMaxSize()
+            )
         } else {
             if (isLoadingBible) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -433,53 +385,33 @@ private fun VerseActionMenu(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BookChapterPicker(
     books: List<BookMeta>,
     onDismiss: () -> Unit,
     onSelect: (bookIndex: Int, chapter: Int) -> Unit
 ) {
-    var selectedBook by remember { mutableStateOf<BookMeta?>(null) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
-        title = { Text(selectedBook?.name ?: "Choose a book") },
-        text = {
-            if (selectedBook == null) {
-                LazyColumn(Modifier.height(400.dp)) {
-                    lazyItems(books, key = { it.bookIndex }) { book ->
-                        Text(
-                            book.name,
-                            Modifier.fillMaxWidth().clickable { selectedBook = book }.padding(vertical = 10.dp)
-                        )
-                    }
-                }
-            } else {
-                val book = selectedBook!!
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(5),
-                    modifier = Modifier.height(400.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    lazyGridItems(
-                        items = (1..book.chapterCount).toList()
-                    ) { chapterNum ->
-                        Box(
-                            Modifier
-                                .aspectRatio(1f)
-                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                .clickable { onSelect(book.bookIndex, chapterNum) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("$chapterNum", style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                }
-            }
+    // Full-screen modal using SearchPanel so the picker and the search bar
+    // share the same Book→Chapter→Verse navigation with back arrows.
+    ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.fillMaxHeight(0.92f)) {
+        var pickerQuery by remember { mutableStateOf("") }
+        Column(Modifier.fillMaxSize()) {
+            OutlinedTextField(
+                value = pickerQuery,
+                onValueChange = { pickerQuery = it },
+                placeholder = { Text("Filter books…") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+            SearchPanel(
+                query = pickerQuery,
+                books = books,
+                searchResults = emptyList(),     // no text search inside the picker
+                referenceMatch = null,
+                onNavigate = { bIdx, ch, _ -> onSelect(bIdx, ch); onDismiss() },
+                modifier = Modifier.weight(1f)
+            )
         }
-    )
+    }
 }
