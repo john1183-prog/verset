@@ -15,6 +15,8 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,6 +54,7 @@ fun SearchPanel(
     searchResults: List<Verse>,
     referenceMatch: ReferenceMatch?,
     onNavigate: (bookIndex: Int, chapter: Int, verse: Int?) -> Unit,
+    loadVerses: (suspend (bookIndex: Int, chapter: Int) -> List<Verse>)? = null,
     modifier: Modifier = Modifier
 ) {
     var level by remember { mutableStateOf<SearchLevel>(SearchLevel.Books) }
@@ -205,6 +208,9 @@ fun SearchPanel(
 
             // ── Level 2: Chapter grid ─────────────────────────────────────────
             is SearchLevel.Chapters -> {
+                var loadingChapter by remember { mutableStateOf<Int?>(null) }
+                val scope = rememberCoroutineScope()
+
                 Text(
                     "Select a chapter",
                     style = MaterialTheme.typography.labelMedium,
@@ -219,21 +225,48 @@ fun SearchPanel(
                     lazyGridItems(
                         items = (1..l.book.chapterCount).toList()
                     ) { ch ->
+                        val isLoading = loadingChapter == ch
                         Box(
                             Modifier
                                 .aspectRatio(1f)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                .clickable {
-                                    // Tapping a chapter goes straight there — no verse picker needed
-                                    onNavigate(l.book.bookIndex, ch, null)
+                                .background(
+                                    if (isLoading) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.surfaceVariant
+                                )
+                                .clickable(enabled = loadingChapter == null) {
+                                    if (loadVerses != null) {
+                                        // Load verses then transition to verse grid
+                                        loadingChapter = ch
+                                        scope.launch {
+                                            val verses = loadVerses(l.book.bookIndex, ch)
+                                            if (verses.isNotEmpty()) {
+                                                level = SearchLevel.Verses(l.book, ch, verses)
+                                            } else {
+                                                // Empty chapter (shouldn't happen) — navigate directly
+                                                onNavigate(l.book.bookIndex, ch, null)
+                                            }
+                                            loadingChapter = null
+                                        }
+                                    } else {
+                                        // Picker mode (no verse selection needed) — navigate directly
+                                        onNavigate(l.book.bookIndex, ch, null)
+                                    }
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                "$ch",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
-                            )
+                            if (isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Text(
+                                    "$ch",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                                )
+                            }
                         }
                     }
                 }

@@ -14,6 +14,9 @@ interface VerseDao {
     @Query("SELECT * FROM verses WHERE bookIndex = :bookIndex AND chapter = :chapter ORDER BY verse ASC")
     fun versesInChapter(bookIndex: Int, chapter: Int): Flow<List<Verse>>
 
+    @Query("SELECT * FROM verses WHERE bookIndex = :bookIndex AND chapter = :chapter ORDER BY verse ASC")
+    suspend fun versesInChapterOnce(bookIndex: Int, chapter: Int): List<Verse>
+
     @Query("SELECT * FROM verses WHERE text LIKE '%' || :query || '%' LIMIT 200")
     fun search(query: String): Flow<List<Verse>>
 

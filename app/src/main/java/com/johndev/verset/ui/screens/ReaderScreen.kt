@@ -174,6 +174,7 @@ fun ReaderScreen(
                     showSearch = false
                     searchQuery = ""
                 },
+                loadVerses = { bIdx, ch -> repository.chapterOnce(bIdx, ch) },
                 modifier = Modifier.fillMaxSize()
             )
         } else {
