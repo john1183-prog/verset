@@ -13,6 +13,20 @@ android {
     namespace = "com.johndev.verset"
     compileSdk = 35
 
+    signingConfigs {
+        getByName("debug") {
+            // Committed keystore (app/debug.keystore) so every build — including every
+            // CI run on a fresh GitHub Actions VM — produces the same SHA-1/SHA-256.
+            // Without this, AGP auto-generates a new random debug key per machine/run,
+            // which breaks Google Sign-In every time since Firebase only trusts
+            // fingerprints you've explicitly registered.
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.johndev.verset"
         minSdk = 24
