@@ -9,21 +9,29 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.johndev.verset.auth.GoogleAuthManager
 import com.johndev.verset.data.Prefs
 import com.johndev.verset.repository.BibleRepository
 import com.johndev.verset.repository.SyncRepository
 import com.johndev.verset.ui.navigation.VersetNavGraph
 import com.johndev.verset.ui.theme.VersetTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+
+    private lateinit var syncRepository: SyncRepository
+    private lateinit var prefs: Prefs
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val app = application as VersetApp
         val repository = BibleRepository(app.db)
-        val syncRepository = SyncRepository(app.db)
-        val prefs = Prefs(this)
+        syncRepository = SyncRepository(app.db)
+        prefs = Prefs(this)
 
         setContent {
             var darkMode by remember { mutableStateOf(if (prefs.followSystemTheme) null else prefs.darkMode) }
@@ -45,6 +53,22 @@ class MainActivity : ComponentActivity() {
                             darkMode = if (follow) null else dark
                         }
                     )
+                }
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Sync whenever the app comes to the foreground, in addition to the
+        // 6-hour background job — makes sync feel automatic instead of
+        // something you have to remember to tap. Silent, best-effort: failures
+        // here don't surface to the user (they can still tap "Sync now" manually).
+        if (GoogleAuthManager.isSignedIn()) {
+            CoroutineScope(Dispatchers.IO).launch {
+                val result = syncRepository.syncNow()
+                if (result.isSuccess) {
+                    prefs.lastSyncTimeMillis = System.currentTimeMillis()
                 }
             }
         }

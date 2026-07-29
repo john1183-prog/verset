@@ -1,19 +1,23 @@
 package com.johndev.verset.ui.screens
 
+import androidx.compose.animation.core.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.items as lazyItems
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -21,11 +25,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.johndev.verset.data.BookMeta
 import com.johndev.verset.data.Prefs
 import com.johndev.verset.data.Verse
+import com.johndev.verset.data.verseId
+import com.johndev.verset.export.CardTheme
+import com.johndev.verset.export.ImageCardExporter
 import com.johndev.verset.repository.BibleRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -35,7 +47,7 @@ import kotlinx.coroutines.launch
  *   once and then calls [onJumpConsumed] — used when Home's "Read in context"
  *   button sends the user here to a specific verse of the day.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ReaderScreen(
     repository: BibleRepository,
@@ -47,10 +59,36 @@ fun ReaderScreen(
     var bookIndex by rememberSaveable { mutableStateOf(prefs.lastBookIndex) }
     var chapter by rememberSaveable { mutableStateOf(prefs.lastChapter) }
     var showPicker by rememberSaveable { mutableStateOf(false) }
-    var verseToTag by remember { mutableStateOf<Verse?>(null) } // Verse isn't Parcelable; lost on process death, acceptable for a transient dialog
+    var verseToTag by remember { mutableStateOf<Verse?>(null) }
     var showSearch by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
+    var searchThisBookOnly by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    // ── Immersive/full-screen reading mode ──────────────────────────────────
+    // Tap anywhere on the verse list toggles the top bar, prev/next bar, and
+    // system status/nav bars — long-press a verse to open its action menu.
+    var immersiveMode by remember { mutableStateOf(false) }
+    val view = LocalView.current
+    LaunchedEffect(immersiveMode) {
+        val window = (view.context as? android.app.Activity)?.window ?: return@LaunchedEffect
+        val controller = WindowCompat.getInsetsController(window, view)
+        if (immersiveMode) {
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+    // Restore system bars if the user navigates away while immersive
+    DisposableEffect(Unit) {
+        onDispose {
+            val window = (view.context as? android.app.Activity)?.window
+            if (window != null) {
+                WindowCompat.getInsetsController(window, view).show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
 
     LaunchedEffect(jumpTarget) {
         jumpTarget?.let { (b, c) ->
@@ -62,7 +100,6 @@ fun ReaderScreen(
         }
     }
 
-    // Debounce: only re-query the DB 300ms after the user stops typing, instead of on every keystroke.
     var debouncedQuery by remember { mutableStateOf("") }
     LaunchedEffect(searchQuery) {
         delay(300)
@@ -73,17 +110,19 @@ fun ReaderScreen(
     val taggedIdsList by repository.taggedVerseIds().collectAsState(initial = emptyList())
     val taggedIds = remember(taggedIdsList) { taggedIdsList.toSet() }
     val currentBook = books.find { it.bookIndex == bookIndex }
-    val searchResults by (if (debouncedQuery.trim().length >= 3) repository.search(debouncedQuery.trim()) else kotlinx.coroutines.flow.flowOf(emptyList()))
-        .collectAsState(initial = emptyList())
-    // Computed instantly (no debounce) since it's cheap local matching, not a DB query —
-    // lets "Go to John 3:16" appear the moment it's typeable, not after a delay.
-    val referenceMatch = remember(searchQuery, books) { parseReference(searchQuery, books) }
 
+    val searchResults by (
+        if (debouncedQuery.trim().length < 3) kotlinx.coroutines.flow.flowOf(emptyList())
+        else if (searchThisBookOnly) repository.searchInBook(bookIndex, debouncedQuery.trim())
+        else repository.search(debouncedQuery.trim())
+    ).collectAsState(initial = emptyList())
+
+    val referenceMatch = remember(searchQuery, books) { parseReference(searchQuery, books) }
     val isLoadingBible by com.johndev.verset.data.BibleLoadState.isLoading.collectAsState()
 
-    // When a search result or reference jump lands on a specific verse, we scroll the
-    // chapter list to that verse instead of just loading the chapter at the top.
+    // Scroll-to + temporary highlight when arriving via search/reference jump
     var scrollToVerse by remember { mutableStateOf<Int?>(null) }
+    var highlightedVerseId by remember { mutableStateOf<Long?>(null) }
     val listState = rememberLazyListState()
     LaunchedEffect(scrollToVerse, verses) {
         val target = scrollToVerse ?: return@LaunchedEffect
@@ -91,14 +130,19 @@ fun ReaderScreen(
         val idx = verses.indexOfFirst { it.verse == target }
         if (idx >= 0) {
             listState.animateScrollToItem(idx)
+            highlightedVerseId = verseId(bookIndex, chapter, target)
             scrollToVerse = null
+        }
+    }
+    LaunchedEffect(highlightedVerseId) {
+        if (highlightedVerseId != null) {
+            delay(2500)
+            highlightedVerseId = null
         }
     }
 
     LaunchedEffect(bookIndex, chapter, currentBook) {
-        currentBook?.let { book ->
-            repository.recordChapterView(bookIndex, book.name, chapter)
-        }
+        currentBook?.let { book -> repository.recordChapterView(bookIndex, book.name, chapter) }
     }
 
     fun goToChapter(newBookIndex: Int, newChapter: Int) {
@@ -110,21 +154,13 @@ fun ReaderScreen(
 
     fun goNext() {
         val book = currentBook ?: return
-        if (chapter < book.chapterCount) {
-            goToChapter(bookIndex, chapter + 1)
-        } else {
-            val nextBook = books.find { it.bookIndex == bookIndex + 1 } ?: books.firstOrNull()
-            nextBook?.let { goToChapter(it.bookIndex, 1) }
-        }
+        if (chapter < book.chapterCount) goToChapter(bookIndex, chapter + 1)
+        else (books.find { it.bookIndex == bookIndex + 1 } ?: books.firstOrNull())?.let { goToChapter(it.bookIndex, 1) }
     }
 
     fun goPrevious() {
-        if (chapter > 1) {
-            goToChapter(bookIndex, chapter - 1)
-        } else {
-            val prevBook = books.find { it.bookIndex == bookIndex - 1 } ?: books.lastOrNull()
-            prevBook?.let { goToChapter(it.bookIndex, it.chapterCount) }
-        }
+        if (chapter > 1) goToChapter(bookIndex, chapter - 1)
+        else (books.find { it.bookIndex == bookIndex - 1 } ?: books.lastOrNull())?.let { goToChapter(it.bookIndex, it.chapterCount) }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -147,7 +183,20 @@ fun ReaderScreen(
                 }
             )
             LaunchedEffect(Unit) { focusRequester.requestFocus() }
-        } else {
+
+            if (currentBook != null) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilterChip(
+                        selected = searchThisBookOnly,
+                        onClick = { searchThisBookOnly = !searchThisBookOnly },
+                        label = { Text("Search in ${currentBook.name} only") }
+                    )
+                }
+            }
+        } else if (!immersiveMode) {
             TopAppBar(
                 title = {
                     TextButton(onClick = { showPicker = true }) {
@@ -193,12 +242,21 @@ fun ReaderScreen(
                 ) {
                     itemsIndexed(verses, key = { _, v -> v.id }) { _, verse ->
                         val isTagged = taggedIds.contains(verse.id)
-                        val context = LocalContext.current
                         var showVerseMenu by remember { mutableStateOf(false) }
+                        val isHighlighted = verse.id == highlightedVerseId
+                        val bgColor by animateColorAsState(
+                            targetValue = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                            animationSpec = tween(durationMillis = 500),
+                            label = "verseHighlight"
+                        )
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .clickable { showVerseMenu = true }
+                                .background(bgColor)
+                                .combinedClickable(
+                                    onClick = { immersiveMode = !immersiveMode },
+                                    onLongClick = { showVerseMenu = true }
+                                )
                                 .padding(vertical = 10.dp),
                             verticalAlignment = Alignment.Top
                         ) {
@@ -226,6 +284,7 @@ fun ReaderScreen(
                             VerseActionMenu(
                                 verse = verse,
                                 repository = repository,
+                                prefs = prefs,
                                 onDismiss = { showVerseMenu = false },
                                 onTag = { verseToTag = verse; showVerseMenu = false }
                             )
@@ -233,19 +292,19 @@ fun ReaderScreen(
                     }
                 }
 
-                // Previous/Next chapter bar — wraps across book boundaries (e.g. end of
-                // Genesis 50 -> Exodus 1, start of Genesis 1 -> end of Revelation 22).
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    OutlinedButton(onClick = { goPrevious() }) {
-                        Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = null)
-                        Text("Previous")
-                    }
-                    OutlinedButton(onClick = { goNext() }) {
-                        Text("Next")
-                        Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null)
+                if (!immersiveMode) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        OutlinedButton(onClick = { goPrevious() }) {
+                            Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = null)
+                            Text("Previous")
+                        }
+                        OutlinedButton(onClick = { goNext() }) {
+                            Text("Next")
+                            Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null)
+                        }
                     }
                 }
             }
@@ -256,38 +315,37 @@ fun ReaderScreen(
         BookChapterPicker(
             books = books,
             onDismiss = { showPicker = false },
-            onSelect = { b, c ->
-                goToChapter(b, c)
-                showPicker = false
-            }
+            onSelect = { b, c -> goToChapter(b, c); showPicker = false }
         )
     }
 
     verseToTag?.let { verse ->
-        TagVerseDialog(
-            verse = verse,
-            repository = repository,
-            onDismiss = { verseToTag = null }
-        )
+        TagVerseDialog(verse = verse, repository = repository, onDismiss = { verseToTag = null })
     }
 }
 
 /**
- * Bottom-sheet-style action menu shown when a user taps a verse.
- * "Share as text" shares immediately and auto-tags the verse under "Shared".
- * "Tag / classify…" opens the full tagging dialog.
+ * Bottom-sheet-style action menu shown on long-press of a verse.
+ * "Share as text" and "Share as image" both share immediately without
+ * requiring the verse to be tagged first — if [Prefs.autoTagOnShare] is on
+ * (default), the verse also gets filed under a "Shared" tag afterward so it's
+ * easy to find again; that behavior is a Settings toggle, not forced.
  */
 @Composable
 private fun VerseActionMenu(
     verse: Verse,
     repository: BibleRepository,
+    prefs: Prefs,
     onDismiss: () -> Unit,
     onTag: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var showThemePicker by remember { mutableStateOf(false) }
+    var exportDraft by remember { mutableStateOf<ExportDraft?>(null) }
 
-    suspend fun autoTag() {
+    suspend fun autoTagIfEnabled() {
+        if (!prefs.autoTagOnShare) return
         val sharedTag = repository.getOrCreateTag("Shared", "#6B4A8B")
         repository.saveEntry(verse, sharedTag.id, "")
     }
@@ -310,7 +368,7 @@ private fun VerseActionMenu(
                             putExtra(android.content.Intent.EXTRA_TEXT, textToShare)
                         }
                         context.startActivity(android.content.Intent.createChooser(intent, "Share verse"))
-                        scope.launch { autoTag() }
+                        scope.launch { autoTagIfEnabled() }
                         onDismiss()
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -318,6 +376,14 @@ private fun VerseActionMenu(
                     Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("Share as text")
+                }
+                TextButton(
+                    onClick = { showThemePicker = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Filled.Image, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Share as image")
                 }
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                 TextButton(onClick = { onTag() }, modifier = Modifier.fillMaxWidth()) {
@@ -330,6 +396,45 @@ private fun VerseActionMenu(
         confirmButton = {},
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
+
+    if (showThemePicker) {
+        ThemePickerDialog(
+            onDismiss = { showThemePicker = false; onDismiss() },
+            onPick = { theme ->
+                exportDraft = ExportDraft(
+                    reference = "— ${verse.book} ${verse.chapter}:${verse.verse}",
+                    verseText = verse.text,
+                    note = "",
+                    tagLabel = "",
+                    theme = theme
+                )
+                showThemePicker = false
+            }
+        )
+    }
+
+    exportDraft?.let { draft ->
+        EditableExportDialog(
+            draft = draft,
+            onDismiss = { exportDraft = null; onDismiss() },
+            onExport = { edited ->
+                val uri = ImageCardExporter.export(
+                    context, edited.reference, edited.verseText, edited.note, edited.tagLabel, edited.theme
+                )
+                if (uri != null) {
+                    val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "image/png"
+                        putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(android.content.Intent.createChooser(shareIntent, "Share verse image"))
+                }
+                scope.launch { autoTagIfEnabled() }
+                exportDraft = null
+                onDismiss()
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -339,8 +444,6 @@ private fun BookChapterPicker(
     onDismiss: () -> Unit,
     onSelect: (bookIndex: Int, chapter: Int) -> Unit
 ) {
-    // Full-screen modal using SearchPanel so the picker and the search bar
-    // share the same Book→Chapter→Verse navigation with back arrows.
     ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.fillMaxHeight(0.92f)) {
         var pickerQuery by remember { mutableStateOf("") }
         Column(Modifier.fillMaxSize()) {
@@ -354,7 +457,7 @@ private fun BookChapterPicker(
             SearchPanel(
                 query = pickerQuery,
                 books = books,
-                searchResults = emptyList(),     // no text search inside the picker
+                searchResults = emptyList(),
                 referenceMatch = null,
                 onNavigate = { bIdx, ch, _ -> onSelect(bIdx, ch); onDismiss() },
                 modifier = Modifier.weight(1f)

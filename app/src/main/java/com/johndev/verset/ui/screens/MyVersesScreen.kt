@@ -276,7 +276,7 @@ private fun SingleChoiceSegment(options: List<String>, selectedIndex: Int, onSel
     }
 }
 
-private data class ExportDraft(
+internal data class ExportDraft(
     val reference: String,
     val verseText: String,
     val note: String,
@@ -290,7 +290,7 @@ private data class ExportDraft(
  * size to whatever text ends up here, so edits (shorter/longer) still render well.
  */
 @Composable
-private fun EditableExportDialog(draft: ExportDraft, onDismiss: () -> Unit, onExport: (ExportDraft) -> Unit) {
+internal fun EditableExportDialog(draft: ExportDraft, onDismiss: () -> Unit, onExport: (ExportDraft) -> Unit) {
     var reference by remember { mutableStateOf(draft.reference) }
     var verseText by remember { mutableStateOf(draft.verseText) }
     var note by remember { mutableStateOf(draft.note) }
@@ -335,7 +335,7 @@ private fun EditableExportDialog(draft: ExportDraft, onDismiss: () -> Unit, onEx
 }
 
 @Composable
-private fun ThemePickerDialog(onDismiss: () -> Unit, onPick: (com.johndev.verset.export.CardTheme) -> Unit) {
+internal fun ThemePickerDialog(onDismiss: () -> Unit, onPick: (com.johndev.verset.export.CardTheme) -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Choose a card style") },

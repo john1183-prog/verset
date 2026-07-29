@@ -37,6 +37,11 @@ class Prefs(context: Context) {
         get() = sp.getString("web_client_id", "") ?: ""
         set(value) = sp.edit().putString("web_client_id", value).apply()
 
+    /** Whether sharing an untagged verse auto-creates a "Shared" tag entry for it. */
+    var autoTagOnShare: Boolean
+        get() = sp.getBoolean("auto_tag_on_share", true)
+        set(value) = sp.edit().putBoolean("auto_tag_on_share", value).apply()
+
     var lastChapter: Int
         get() = sp.getInt("last_chapter", 1)
         set(value) = sp.edit().putInt("last_chapter", value).apply()

@@ -33,6 +33,15 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+
+        // Baked in at build time so every user's installed APK already has it —
+        // no runtime setup screen needed for end users. Sourced from a Gradle
+        // property (set via CI from the FIREBASE_WEB_CLIENT_ID secret, or locally
+        // via -PWEB_CLIENT_ID=... / gradle.properties). Empty string if unset,
+        // which the app treats as "not configured yet" and falls back to the
+        // developer-only manual-entry screen in Settings.
+        val webClientId = (project.findProperty("WEB_CLIENT_ID") as String?) ?: ""
+        buildConfigField("String", "WEB_CLIENT_ID", "\"$webClientId\"")
     }
 
     buildTypes {
@@ -51,6 +60,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"
@@ -65,6 +75,7 @@ android {
 
 dependencies {
     // Compose
+    implementation("androidx.core:core-ktx:1.15.0")
     implementation(platform("androidx.compose:compose-bom:2024.10.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")

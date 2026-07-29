@@ -177,7 +177,7 @@ fun SearchPanel(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
                     LazyColumn(Modifier.weight(if (showBookSuggestions) 0.6f else 1f)) {
-                        lazyItems(searchResults.take(100), key = { it.id }) { verse ->
+                        lazyItems(searchResults.take(500), key = { it.id }) { verse ->
                             Column(
                                 Modifier
                                     .fillMaxWidth()
