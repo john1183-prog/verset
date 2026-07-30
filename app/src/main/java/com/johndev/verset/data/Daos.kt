@@ -1,6 +1,8 @@
 package com.johndev.verset.data
 
 import androidx.room.*
+import androidx.sqlite.db.SimpleSQLiteQuery
+import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -17,14 +19,42 @@ interface VerseDao {
     @Query("SELECT * FROM verses WHERE bookIndex = :bookIndex AND chapter = :chapter ORDER BY verse ASC")
     suspend fun versesInChapterOnce(bookIndex: Int, chapter: Int): List<Verse>
 
-    @Query("SELECT * FROM verses WHERE text LIKE '%' || :query || '%' LIMIT 500")
-    fun search(query: String): Flow<List<Verse>>
+    /**
+     * Every word in the query must appear somewhere in the verse text (any order,
+     * anywhere) — a real multi-word search instead of one exact-phrase substring.
+     * No artificial result cap: this returns every matching verse in the KJV.
+     */
+    @RawQuery
+    suspend fun searchRaw(query: SupportSQLiteQuery): List<Verse>
 
-    @Query("SELECT * FROM verses WHERE bookIndex = :bookIndex AND text LIKE '%' || :query || '%' LIMIT 500")
-    fun searchInBook(bookIndex: Int, query: String): Flow<List<Verse>>
+    @RawQuery
+    suspend fun countRaw(query: SupportSQLiteQuery): Int
+
+    /** All distinct words in the KJV — built once, used for typo-tolerant "did you mean" fallback. */
+    @Query("SELECT text FROM verses")
+    suspend fun allVerseTexts(): List<String>
 
     @Query("SELECT * FROM verses WHERE id = :id")
     suspend fun byId(id: Long): Verse?
+}
+
+object SearchQueryBuilder {
+    fun build(words: List<String>, bookIndex: Int?, countOnly: Boolean, limit: Int = 2000): SupportSQLiteQuery {
+        val clauses = words.map { "text LIKE ?" }.toMutableList()
+        val args = mutableListOf<Any>()
+        words.forEach { args.add("%$it%") }
+        if (bookIndex != null) {
+            clauses.add("bookIndex = ?")
+            args.add(bookIndex)
+        }
+        val where = clauses.joinToString(" AND ")
+        val sql = if (countOnly) {
+            "SELECT COUNT(*) FROM verses WHERE $where"
+        } else {
+            "SELECT * FROM verses WHERE $where ORDER BY bookIndex, chapter, verse LIMIT $limit"
+        }
+        return SimpleSQLiteQuery(sql, args.toTypedArray())
+    }
 }
 
 @Dao

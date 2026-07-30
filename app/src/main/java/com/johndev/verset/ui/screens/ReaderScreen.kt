@@ -111,11 +111,24 @@ fun ReaderScreen(
     val taggedIds = remember(taggedIdsList) { taggedIdsList.toSet() }
     val currentBook = books.find { it.bookIndex == bookIndex }
 
-    val searchResults by (
-        if (debouncedQuery.trim().length < 3) kotlinx.coroutines.flow.flowOf(emptyList())
-        else if (searchThisBookOnly) repository.searchInBook(bookIndex, debouncedQuery.trim())
-        else repository.search(debouncedQuery.trim())
-    ).collectAsState(initial = emptyList())
+    var searchResults by remember { mutableStateOf<List<Verse>>(emptyList()) }
+    var searchTotalCount by remember { mutableStateOf(0) }
+    var searchCorrections by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var searchLoading by remember { mutableStateOf(false) }
+
+    LaunchedEffect(debouncedQuery, searchThisBookOnly, bookIndex) {
+        val trimmed = debouncedQuery.trim()
+        if (trimmed.length < 3) {
+            searchResults = emptyList(); searchTotalCount = 0; searchCorrections = emptyMap()
+            return@LaunchedEffect
+        }
+        searchLoading = true
+        val result = repository.searchVerses(trimmed, if (searchThisBookOnly) bookIndex else null)
+        searchResults = result.verses
+        searchTotalCount = result.totalCount
+        searchCorrections = result.correctedWords
+        searchLoading = false
+    }
 
     val referenceMatch = remember(searchQuery, books) { parseReference(searchQuery, books) }
     val isLoadingBible by com.johndev.verset.data.BibleLoadState.isLoading.collectAsState()
@@ -216,6 +229,9 @@ fun ReaderScreen(
                 query = searchQuery,
                 books = books,
                 searchResults = searchResults,
+                searchTotalCount = searchTotalCount,
+                searchCorrections = searchCorrections,
+                searchLoading = searchLoading,
                 referenceMatch = referenceMatch,
                 onNavigate = { bIdx, ch, verseNum ->
                     goToChapter(bIdx, ch)

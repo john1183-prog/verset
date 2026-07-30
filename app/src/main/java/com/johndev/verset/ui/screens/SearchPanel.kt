@@ -55,6 +55,9 @@ fun SearchPanel(
     referenceMatch: ReferenceMatch?,
     onNavigate: (bookIndex: Int, chapter: Int, verse: Int?) -> Unit,
     loadVerses: (suspend (bookIndex: Int, chapter: Int) -> List<Verse>)? = null,
+    searchTotalCount: Int = 0,
+    searchCorrections: Map<String, String> = emptyMap(),
+    searchLoading: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var level by remember { mutableStateOf<SearchLevel>(SearchLevel.Books) }
@@ -110,7 +113,7 @@ fun SearchPanel(
                 }
 
                 val showBookSuggestions = query.isBlank() || filteredBooks.isNotEmpty()
-                val showTextResults = query.trim().length >= 3 && searchResults.isNotEmpty()
+                val showTextResults = query.trim().length >= 3
 
                 if (showBookSuggestions) {
                     if (query.isNotBlank() && filteredBooks.size <= 5) {
@@ -171,13 +174,25 @@ fun SearchPanel(
 
                 if (showTextResults) {
                     HorizontalDivider()
-                    Text(
-                        "Verses containing \"${query.trim()}\"",
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        if (searchCorrections.isNotEmpty()) {
+                            val correctedQuery = query.trim().split(Regex("\\s+"))
+                                .joinToString(" ") { searchCorrections[it.lowercase()] ?: it }
+                            Text(
+                                "No exact match — showing results for \"$correctedQuery\"",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.tertiary
+                            )
+                            Spacer(Modifier.height(4.dp))
+                        }
+                        Text(
+                            if (searchLoading) "Searching…"
+                            else "$searchTotalCount occurrence${if (searchTotalCount == 1) "" else "s"} in the KJV",
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
                     LazyColumn(Modifier.weight(if (showBookSuggestions) 0.6f else 1f)) {
-                        lazyItems(searchResults.take(500), key = { it.id }) { verse ->
+                        lazyItems(searchResults, key = { it.id }) { verse ->
                             Column(
                                 Modifier
                                     .fillMaxWidth()
