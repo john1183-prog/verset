@@ -68,7 +68,8 @@ fun SettingsScreen(
         Text("Reader text size: ${"%.1f".format(fontScale)}x")
         Slider(
             value = fontScale,
-            onValueChange = { fontScale = it; prefs.fontScale = it },
+            onValueChange = { fontScale = it },
+            onValueChangeFinished = { prefs.fontScale = fontScale },
             valueRange = 0.8f..1.6f,
             steps = 7
         )

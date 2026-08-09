@@ -53,8 +53,26 @@ gradle assembleDebug
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    // Tags: just needs to belong to the signed-in user and have a reasonable name.
+    match /users/{userId}/tags/{tagId} {
+      allow read, write: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() < 100;
+    }
+    // Entries: belongs to the signed-in user, and has the shape the app expects —
+    // this is the write path a compromised/malicious client would most likely abuse,
+    // since it's what the offline-first sync pushes on every app open.
+    match /users/{userId}/entries/{entryId} {
+      allow read, write: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.verseId is int
+        && request.resource.data.tagId is int
+        && request.resource.data.verseText is string
+        && request.resource.data.verseText.size() < 1000
+        && request.resource.data.note is string
+        && request.resource.data.note.size() < 2000;
     }
   }
 }

@@ -8,8 +8,13 @@ import androidx.room.PrimaryKey
 /**
  * A user-defined classification, e.g. "Promise", "Comfort", "Warning".
  * Created on the fly from the tag picker when it doesn't already exist.
+ *
+ * The unique index on [name] is what makes getOrCreateTag()'s check-then-insert safe:
+ * without it, two rapid calls (e.g. auto-tag-on-share firing alongside a manual tag)
+ * could both see "not found yet" and both insert, since OnConflictStrategy.IGNORE on
+ * its own only guards against a primary-key collision, not a duplicate name.
  */
-@Entity(tableName = "tags")
+@Entity(tableName = "tags", indices = [Index(value = ["name"], unique = true)])
 data class Tag @JvmOverloads constructor(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String = "",

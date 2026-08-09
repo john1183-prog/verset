@@ -6,7 +6,8 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.RectF
+import android.graphics.Typeface
+import android.net.Uri
 import android.provider.MediaStore
 
 /** A named color scheme for exported verse cards. */
@@ -23,18 +24,36 @@ enum class CardTheme(
     FOREST("Forest", "#1E3A2E", "#8FBF7F", "#F4F4F0", "#C4D4C0")
 }
 
+/** A named typeface choice for exported verse cards. */
+enum class ImageFont(val displayName: String, val typeface: Typeface) {
+    SANS("Sans Serif", Typeface.DEFAULT),
+    SERIF("Serif", Typeface.SERIF),
+    ELEGANT("Elegant Serif", Typeface.create(Typeface.SERIF, Typeface.ITALIC)),
+    MONOSPACE("Monospace", Typeface.MONOSPACE)
+}
+
+/** Horizontal text alignment for exported verse cards. */
+enum class ImageAlign(val displayName: String, val paintAlign: Paint.Align) {
+    LEFT("Left", Paint.Align.LEFT),
+    CENTER("Center", Paint.Align.CENTER),
+    RIGHT("Right", Paint.Align.RIGHT)
+}
+
+/** One verse's reference + text, as rendered on a card. A card can hold one or many. */
+data class VerseCardItem(val reference: String, val verseText: String)
+
 /**
- * Renders a verse card as a shareable 1080x1350 image (Instagram-portrait
+ * Renders one or more verses as a shareable 1080x1350 image (Instagram-portrait
  * friendly) and saves it to the Pictures/Verset gallery folder.
  *
- * Content (reference/verse text/note) is passed in as plain strings rather
- * than a VerseTagEntry directly, so the caller can let the user edit the
- * text before export without needing a fake entry object.
+ * Content is passed in as plain strings rather than DB entities directly, so the
+ * caller can let the user edit the text/font/alignment before export without
+ * needing a fake entity object.
  *
- * Font size auto-fits to the available space per section (verse text and
- * note each get their own fit pass) instead of a fixed size — short verses
- * use a larger font instead of leaving empty space, long verses shrink
- * instead of silently running past the bottom of the card.
+ * Font size auto-fits to the available space (all items combined, plus the note)
+ * instead of a fixed size — a single short verse uses a larger font instead of
+ * leaving empty space; several verses, or long ones, shrink together instead of
+ * spilling past the bottom of the card.
  */
 object ImageCardExporter {
 
@@ -42,14 +61,21 @@ object ImageCardExporter {
     private const val HEIGHT = 1350
     private const val MARGIN = 80f
 
+    // Reference lines render smaller than verse text, at this fraction of the verse font size.
+    private const val REF_SIZE_RATIO = 0.55f
+    private const val MIN_REF_SIZE = 20f
+
     fun export(
         context: Context,
-        reference: String,
-        verseText: String,
+        items: List<VerseCardItem>,
         note: String,
         tagLabel: String,
-        theme: CardTheme = CardTheme.NAVY_GOLD
+        theme: CardTheme = CardTheme.NAVY_GOLD,
+        font: ImageFont = ImageFont.SANS,
+        align: ImageAlign = ImageAlign.LEFT
     ): Uri? {
+        if (items.isEmpty()) return null
+
         val bmp = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
 
@@ -63,31 +89,40 @@ object ImageCardExporter {
 
         var y = 140f
         if (tagLabel.isNotBlank()) {
-            val tagPaint = Paint().apply { color = accentColor; textSize = 42f; isFakeBoldText = true; isAntiAlias = true }
+            val tagPaint = Paint().apply {
+                color = accentColor; textSize = 42f; isFakeBoldText = true; isAntiAlias = true; typeface = font.typeface
+            }
             canvas.drawText(tagLabel.uppercase(), MARGIN, y, tagPaint)
         }
 
         val hasNote = note.isNotBlank()
-        val refReservedHeight = 90f
+        val contentWidth = WIDTH - 2 * MARGIN
         val noteReservedHeight = if (hasNote) 220f else 0f
-        val verseTop = y + 60f
-        val verseBottom = HEIGHT - MARGIN - refReservedHeight - noteReservedHeight
-        val verseWidth = WIDTH - 2 * MARGIN
+        val contentTop = y + 60f
+        val contentBottom = HEIGHT - MARGIN - noteReservedHeight
 
-        val verseSize = fitFontSize(verseText, verseWidth, verseBottom - verseTop, maxSize = 64f, minSize = 30f)
-        val versePaint = Paint().apply { color = bodyColor; textSize = verseSize; isAntiAlias = true }
-        drawWrappedText(canvas, verseText, versePaint, RectF(MARGIN, verseTop, WIDTH - MARGIN, verseBottom), lineSpacing = verseSize * 1.3f)
+        val fitSize = fitCardFontSize(
+            items, font.typeface, contentWidth, contentBottom - contentTop, maxSize = 64f, minSize = 22f
+        )
+        val refSize = (fitSize * REF_SIZE_RATIO).coerceAtLeast(MIN_REF_SIZE)
 
-        val refY = HEIGHT - MARGIN - noteReservedHeight - 20f
-        val refPaint = Paint().apply { color = accentColor; textSize = 40f; isFakeBoldText = true; isAntiAlias = true }
-        canvas.drawText(reference, MARGIN, refY, refPaint)
+        val versePaint = Paint().apply { color = bodyColor; textSize = fitSize; typeface = font.typeface; isAntiAlias = true }
+        val refPaint = Paint().apply { color = accentColor; textSize = refSize; isFakeBoldText = true; typeface = font.typeface; isAntiAlias = true }
+
+        var cursorY = contentTop + fitSize * 0.9f
+        for ((index, item) in items.withIndex()) {
+            cursorY = drawWrappedText(canvas, item.verseText, versePaint, MARGIN, WIDTH - MARGIN, cursorY, fitSize * 1.3f, align)
+            cursorY += refSize * 0.3f
+            cursorY = drawWrappedText(canvas, item.reference, refPaint, MARGIN, WIDTH - MARGIN, cursorY, refSize * 1.3f, align)
+            if (index != items.lastIndex) cursorY += fitSize * 0.6f
+        }
 
         if (hasNote) {
-            val noteTop = refY + 40f
+            val noteTop = contentBottom + 20f
             val noteBottom = HEIGHT - MARGIN
-            val noteSize = fitFontSize(note, verseWidth, noteBottom - noteTop, maxSize = 34f, minSize = 22f)
-            val notePaint = Paint().apply { color = noteColor; textSize = noteSize; isAntiAlias = true }
-            drawWrappedText(canvas, note, notePaint, RectF(MARGIN, noteTop, WIDTH - MARGIN, noteBottom), lineSpacing = noteSize * 1.35f)
+            val noteSize = fitFontSize(note, contentWidth, noteBottom - noteTop, maxSize = 34f, minSize = 20f, typeface = font.typeface)
+            val notePaint = Paint().apply { color = noteColor; textSize = noteSize; isAntiAlias = true; typeface = font.typeface }
+            drawWrappedText(canvas, note, notePaint, MARGIN, WIDTH - MARGIN, noteTop + noteSize * 0.9f, noteSize * 1.35f, align)
         }
 
         val uri = saveToGallery(context, bmp, "verset_${System.currentTimeMillis()}")
@@ -96,15 +131,40 @@ object ImageCardExporter {
     }
 
     /**
-     * Finds the largest font size (stepping down from [maxSize] to [minSize]) at which
-     * [text], word-wrapped to [maxWidth], fits within [maxHeight]. Prevents both the
-     * "lots of empty space" look for short text and silent truncation for long text.
+     * Finds the largest font size (stepping down from [maxSize] to [minSize]) at which every
+     * item — its verse text plus its own reference line, stacked for however many [items] there
+     * are — fits within [maxHeight]. This is what lets a single short verse render large while
+     * several long ones shrink together instead of overflowing the card.
      */
-    private fun fitFontSize(text: String, maxWidth: Float, maxHeight: Float, maxSize: Float, minSize: Float): Float {
+    private fun fitCardFontSize(
+        items: List<VerseCardItem>, typeface: Typeface, maxWidth: Float, maxHeight: Float, maxSize: Float, minSize: Float
+    ): Float {
+        if (items.isEmpty() || maxHeight <= 0f) return minSize
+        var size = maxSize
+        while (size > minSize) {
+            val versePaint = Paint().apply { textSize = size; this.typeface = typeface; isAntiAlias = true }
+            val refSize = (size * REF_SIZE_RATIO).coerceAtLeast(MIN_REF_SIZE)
+            val refPaint = Paint().apply { textSize = refSize; this.typeface = typeface; isAntiAlias = true }
+            var totalHeight = 0f
+            for ((index, item) in items.withIndex()) {
+                totalHeight += wrappedLineCount(item.verseText, versePaint, maxWidth) * (size * 1.3f)
+                totalHeight += refSize * 0.3f
+                totalHeight += wrappedLineCount(item.reference, refPaint, maxWidth) * (refSize * 1.3f)
+                if (index != items.lastIndex) totalHeight += size * 0.6f
+            }
+            if (totalHeight <= maxHeight) return size
+            size -= 2f
+        }
+        return minSize
+    }
+
+    private fun fitFontSize(
+        text: String, maxWidth: Float, maxHeight: Float, maxSize: Float, minSize: Float, typeface: Typeface = Typeface.DEFAULT
+    ): Float {
         if (text.isBlank() || maxHeight <= 0f) return minSize
         var size = maxSize
         while (size > minSize) {
-            val paint = Paint().apply { textSize = size; isAntiAlias = true }
+            val paint = Paint().apply { textSize = size; this.typeface = typeface; isAntiAlias = true }
             val lineHeight = size * 1.3f
             val lines = wrappedLineCount(text, paint, maxWidth)
             if (lines * lineHeight <= maxHeight) return size
@@ -129,24 +189,46 @@ object ImageCardExporter {
         return lines
     }
 
-    private fun drawWrappedText(canvas: Canvas, text: String, paint: Paint, bounds: RectF, lineSpacing: Float) {
+    /**
+     * Word-wraps [text] within [left]..[right] and draws it starting at baseline
+     * [startBaselineY], honoring [align] (left/center/right — Paint handles the per-line
+     * x-offset once textAlign is set, so wrapping logic itself doesn't need to change per
+     * alignment). Returns the next available baseline y, so callers can stack multiple
+     * text blocks (verse, then its reference, then the next verse...) in sequence.
+     */
+    private fun drawWrappedText(
+        canvas: Canvas, text: String, paint: Paint,
+        left: Float, right: Float, startBaselineY: Float, lineSpacing: Float, align: ImageAlign
+    ): Float {
+        val maxWidth = right - left
+        val originalAlign = paint.textAlign
+        paint.textAlign = align.paintAlign
+        val xPos = when (align) {
+            ImageAlign.LEFT -> left
+            ImageAlign.CENTER -> (left + right) / 2f
+            ImageAlign.RIGHT -> right
+        }
+
+        var y = startBaselineY
         val words = text.split(" ")
         var line = StringBuilder()
-        var y = bounds.top + lineSpacing * 0.8f
         for (word in words) {
             val test = if (line.isEmpty()) word else "$line $word"
-            if (paint.measureText(test) > bounds.width()) {
-                canvas.drawText(line.toString(), bounds.left, y, paint)
+            if (paint.measureText(test) > maxWidth) {
+                canvas.drawText(line.toString(), xPos, y, paint)
                 line = StringBuilder(word)
                 y += lineSpacing
-                if (y > bounds.bottom + lineSpacing) return
             } else {
                 line = StringBuilder(test)
             }
         }
         if (line.isNotEmpty()) {
-            canvas.drawText(line.toString(), bounds.left, y, paint)
+            canvas.drawText(line.toString(), xPos, y, paint)
+            y += lineSpacing
         }
+
+        paint.textAlign = originalAlign
+        return y
     }
 
     private fun saveToGallery(context: Context, bmp: Bitmap, displayName: String): Uri? {
@@ -161,5 +243,3 @@ object ImageCardExporter {
         return uri
     }
 }
-
-typealias Uri = android.net.Uri

@@ -9,13 +9,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.lifecycleScope
 import com.johndev.verset.auth.GoogleAuthManager
 import com.johndev.verset.data.Prefs
 import com.johndev.verset.repository.BibleRepository
 import com.johndev.verset.repository.SyncRepository
 import com.johndev.verset.ui.navigation.VersetNavGraph
 import com.johndev.verset.ui.theme.VersetTheme
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -65,7 +65,7 @@ class MainActivity : ComponentActivity() {
         // something you have to remember to tap. Silent, best-effort: failures
         // here don't surface to the user (they can still tap "Sync now" manually).
         if (GoogleAuthManager.isSignedIn()) {
-            CoroutineScope(Dispatchers.IO).launch {
+            lifecycleScope.launch(Dispatchers.IO) {
                 val result = syncRepository.syncNow()
                 if (result.isSuccess) {
                     prefs.lastSyncTimeMillis = System.currentTimeMillis()

@@ -26,12 +26,21 @@ class SyncRepository(private val db: AppDatabase) {
         const val FIRESTORE_BATCH_LIMIT = 500
     }
 
+    /**
+     * Pull before push, not after: [pullEntries] already resolves conflicts by
+     * timestamp (a newer remote edit overwrites and un-dirties the local row), so
+     * running it first means an entry that lost that comparison is no longer
+     * flagged dirty and [pushEntries] won't blindly clobber the newer remote edit
+     * with a stale local one. Pushing first (the previous order) had no such
+     * check — whichever device happened to sync last always won, regardless of
+     * which edit was actually newer.
+     */
     suspend fun syncNow(): Result<Unit> {
         val userId = uid() ?: return Result.failure(IllegalStateException("Not signed in"))
         return try {
+            pullEntries(userId)
             pushTags(userId)
             pushEntries(userId)
-            pullEntries(userId)
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

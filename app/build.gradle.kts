@@ -25,6 +25,22 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        // Release signing is intentionally NOT hardcoded. It's read from Gradle
+        // properties that only exist when explicitly passed in (via -P flags), which
+        // release.yml does using GitHub Secrets (RELEASE_STORE_FILE points at a keystore
+        // decoded from RELEASE_KEYSTORE_BASE64 at CI time). If these properties are
+        // absent — e.g. a plain local `gradle assembleRelease` — this config is simply
+        // not created, and the release build type below falls back to unsigned rather
+        // than crashing the build with a null keystore path.
+        val releaseStoreFile = project.findProperty("RELEASE_STORE_FILE") as String?
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = project.findProperty("RELEASE_STORE_PASSWORD") as String?
+                keyAlias = project.findProperty("RELEASE_KEY_ALIAS") as String?
+                keyPassword = project.findProperty("RELEASE_KEY_PASSWORD") as String?
+            }
+        }
     }
 
     defaultConfig {
@@ -46,7 +62,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfigs.findByName("release")?.let { signingConfig = it }
         }
     }
 

@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
@@ -37,10 +38,15 @@ import com.johndev.verset.data.Prefs
 import com.johndev.verset.data.Verse
 import com.johndev.verset.data.verseId
 import com.johndev.verset.export.CardTheme
+import com.johndev.verset.export.ImageAlign
 import com.johndev.verset.export.ImageCardExporter
+import com.johndev.verset.export.ImageFont
+import com.johndev.verset.export.VerseCardItem
 import com.johndev.verset.repository.BibleRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * @param jumpTarget when non-null, the reader jumps to this (bookIndex, chapter)
@@ -64,6 +70,40 @@ fun ReaderScreen(
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var searchThisBookOnly by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    // Multi-verse selection: long-press a verse and choose "Select multiple…" to start,
+    // then tap other verses to add them to the same share/image. Sharing several verses
+    // at once (a passage) reuses the exact same text-share and image-export pipeline as
+    // a single verse — it's just given more than one VerseCardItem.
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedVerseIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var showMultiThemePicker by remember { mutableStateOf(false) }
+    var multiExportDraft by remember { mutableStateOf<ExportDraft?>(null) }
+
+    fun toggleVerseSelection(id: Long) {
+        selectedVerseIds = if (selectedVerseIds.contains(id)) selectedVerseIds - id else selectedVerseIds + id
+    }
+    fun exitSelection() {
+        selectionMode = false
+        selectedVerseIds = emptySet()
+    }
+    suspend fun autoTagSelected(selected: List<Verse>) {
+        if (!prefs.autoTagOnShare) return
+        val sharedTag = repository.getOrCreateTag("Shared", "#6B4A8B")
+        selected.forEach { repository.saveEntry(it, sharedTag.id, "") }
+    }
+    fun shareSelectedAsText(selected: List<Verse>) {
+        if (selected.isEmpty()) return
+        val textToShare = selected.joinToString("\n\n") { v -> "\"${v.text}\"\n— ${v.book} ${v.chapter}:${v.verse}" }
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(android.content.Intent.EXTRA_TEXT, textToShare)
+        }
+        context.startActivity(android.content.Intent.createChooser(intent, "Share verses"))
+        scope.launch { autoTagSelected(selected) }
+        exitSelection()
+    }
 
     // ── Immersive/full-screen reading mode ──────────────────────────────────
     // Tap anywhere on the verse list toggles the top bar, prev/next bar, and
@@ -177,7 +217,26 @@ fun ReaderScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
-        if (showSearch) {
+        if (selectionMode) {
+            TopAppBar(
+                title = { Text("${selectedVerseIds.size} selected") },
+                navigationIcon = {
+                    IconButton(onClick = { exitSelection() }) {
+                        Icon(Icons.Filled.Close, contentDescription = "Cancel selection")
+                    }
+                },
+                actions = {
+                    IconButton(
+                        enabled = selectedVerseIds.isNotEmpty(),
+                        onClick = { shareSelectedAsText(verses.filter { selectedVerseIds.contains(it.id) }) }
+                    ) { Icon(Icons.Filled.Share, contentDescription = "Share selected as text") }
+                    IconButton(
+                        enabled = selectedVerseIds.isNotEmpty(),
+                        onClick = { showMultiThemePicker = true }
+                    ) { Icon(Icons.Filled.Image, contentDescription = "Share selected as image") }
+                }
+            )
+        } else if (showSearch) {
             val focusRequester = remember { FocusRequester() }
             TopAppBar(
                 title = {
@@ -258,11 +317,16 @@ fun ReaderScreen(
                 ) {
                     itemsIndexed(verses, key = { _, v -> v.id }) { _, verse ->
                         val isTagged = taggedIds.contains(verse.id)
+                        val isSelected = selectedVerseIds.contains(verse.id)
                         var showVerseMenu by remember { mutableStateOf(false) }
                         val isHighlighted = verse.id == highlightedVerseId
                         val bgColor by animateColorAsState(
-                            targetValue = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                            animationSpec = tween(durationMillis = 500),
+                            targetValue = when {
+                                isSelected -> MaterialTheme.colorScheme.secondaryContainer
+                                isHighlighted -> MaterialTheme.colorScheme.primaryContainer
+                                else -> Color.Transparent
+                            },
+                            animationSpec = tween(durationMillis = 300),
                             label = "verseHighlight"
                         )
                         Row(
@@ -270,12 +334,23 @@ fun ReaderScreen(
                                 .fillMaxWidth()
                                 .background(bgColor)
                                 .combinedClickable(
-                                    onClick = { immersiveMode = !immersiveMode },
-                                    onLongClick = { showVerseMenu = true }
+                                    onClick = {
+                                        if (selectionMode) toggleVerseSelection(verse.id) else immersiveMode = !immersiveMode
+                                    },
+                                    onLongClick = {
+                                        if (selectionMode) toggleVerseSelection(verse.id) else showVerseMenu = true
+                                    }
                                 )
                                 .padding(vertical = 10.dp),
                             verticalAlignment = Alignment.Top
                         ) {
+                            if (selectionMode) {
+                                Checkbox(
+                                    checked = isSelected,
+                                    onCheckedChange = { toggleVerseSelection(verse.id) },
+                                    modifier = Modifier.padding(end = 4.dp)
+                                )
+                            }
                             Text(
                                 "${verse.verse}",
                                 modifier = Modifier.width(28.dp),
@@ -302,13 +377,18 @@ fun ReaderScreen(
                                 repository = repository,
                                 prefs = prefs,
                                 onDismiss = { showVerseMenu = false },
-                                onTag = { verseToTag = verse; showVerseMenu = false }
+                                onTag = { verseToTag = verse; showVerseMenu = false },
+                                onStartSelection = {
+                                    selectionMode = true
+                                    selectedVerseIds = setOf(verse.id)
+                                    showVerseMenu = false
+                                }
                             )
                         }
                     }
                 }
 
-                if (!immersiveMode) {
+                if (!immersiveMode && !selectionMode) {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
@@ -338,6 +418,50 @@ fun ReaderScreen(
     verseToTag?.let { verse ->
         TagVerseDialog(verse = verse, repository = repository, onDismiss = { verseToTag = null })
     }
+
+    if (showMultiThemePicker) {
+        ThemePickerDialog(
+            onDismiss = { showMultiThemePicker = false },
+            onPick = { theme ->
+                val selected = verses.filter { selectedVerseIds.contains(it.id) }
+                multiExportDraft = ExportDraft(
+                    items = selected.map { VerseCardItem("— ${it.book} ${it.chapter}:${it.verse}", it.text) },
+                    note = "",
+                    tagLabel = "",
+                    theme = theme
+                )
+                showMultiThemePicker = false
+            }
+        )
+    }
+
+    multiExportDraft?.let { draft ->
+        EditableExportDialog(
+            draft = draft,
+            onDismiss = { multiExportDraft = null },
+            onExport = { edited ->
+                val selected = verses.filter { selectedVerseIds.contains(it.id) }
+                multiExportDraft = null
+                scope.launch {
+                    val uri = withContext(Dispatchers.IO) {
+                        ImageCardExporter.export(
+                            context, edited.items, edited.note, edited.tagLabel, edited.theme, edited.font, edited.align
+                        )
+                    }
+                    if (uri != null) {
+                        val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "image/png"
+                            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(android.content.Intent.createChooser(shareIntent, "Share verse image"))
+                    }
+                    autoTagSelected(selected)
+                    exitSelection()
+                }
+            }
+        )
+    }
 }
 
 /**
@@ -353,7 +477,8 @@ private fun VerseActionMenu(
     repository: BibleRepository,
     prefs: Prefs,
     onDismiss: () -> Unit,
-    onTag: () -> Unit
+    onTag: () -> Unit,
+    onStartSelection: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -401,6 +526,14 @@ private fun VerseActionMenu(
                     Spacer(Modifier.width(8.dp))
                     Text("Share as image")
                 }
+                TextButton(
+                    onClick = { onStartSelection() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Filled.DoneAll, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Select multiple…")
+                }
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                 TextButton(onClick = { onTag() }, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Filled.Bookmark, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -418,8 +551,7 @@ private fun VerseActionMenu(
             onDismiss = { showThemePicker = false; onDismiss() },
             onPick = { theme ->
                 exportDraft = ExportDraft(
-                    reference = "— ${verse.book} ${verse.chapter}:${verse.verse}",
-                    verseText = verse.text,
+                    items = listOf(VerseCardItem("— ${verse.book} ${verse.chapter}:${verse.verse}", verse.text)),
                     note = "",
                     tagLabel = "",
                     theme = theme
@@ -434,20 +566,24 @@ private fun VerseActionMenu(
             draft = draft,
             onDismiss = { exportDraft = null; onDismiss() },
             onExport = { edited ->
-                val uri = ImageCardExporter.export(
-                    context, edited.reference, edited.verseText, edited.note, edited.tagLabel, edited.theme
-                )
-                if (uri != null) {
-                    val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                        type = "image/png"
-                        putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                    context.startActivity(android.content.Intent.createChooser(shareIntent, "Share verse image"))
-                }
-                scope.launch { autoTagIfEnabled() }
                 exportDraft = null
                 onDismiss()
+                scope.launch {
+                    val uri = withContext(Dispatchers.IO) {
+                        ImageCardExporter.export(
+                            context, edited.items, edited.note, edited.tagLabel, edited.theme, edited.font, edited.align
+                        )
+                    }
+                    if (uri != null) {
+                        val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "image/png"
+                            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(android.content.Intent.createChooser(shareIntent, "Share verse image"))
+                    }
+                    autoTagIfEnabled()
+                }
             }
         )
     }
