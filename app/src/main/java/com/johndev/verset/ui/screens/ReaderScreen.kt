@@ -354,14 +354,10 @@ fun ReaderScreen(
                                 Box(
                                     Modifier
                                         .width(3.dp)
-                                        .height(with(androidx.compose.ui.platform.LocalDensity.current) {
-                                            // Approximate height of one verse row — grows with font scale
-                                            (prefs.fontScale * 56).dp
-                                        })
+                                        .fillMaxHeight()
                                         .background(MaterialTheme.colorScheme.secondary)
-                                        .padding(end = 4.dp)
                                 )
-                                Spacer(Modifier.width(6.dp))
+                                Spacer(Modifier.width(8.dp))
                             }
                             if (selectionMode) {
                                 Checkbox(

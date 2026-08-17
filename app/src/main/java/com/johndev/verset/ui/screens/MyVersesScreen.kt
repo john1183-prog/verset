@@ -774,24 +774,3 @@ private fun EntryRow(
         )
     }
 }
-        AlertDialog(
-            onDismissRequest = { editingNote = false },
-            title = { Text("Edit note") },
-            text = {
-                OutlinedTextField(
-                    value = draftNote,
-                    onValueChange = { draftNote = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    onSaveNote(draftNote.trim())
-                    editingNote = false
-                }) { Text("Save") }
-            },
-            dismissButton = { TextButton(onClick = { editingNote = false }) { Text("Cancel") } }
-        )
-    }
-}
