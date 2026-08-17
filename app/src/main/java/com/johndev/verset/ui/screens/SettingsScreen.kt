@@ -73,6 +73,15 @@ fun SettingsScreen(
             valueRange = 0.8f..1.6f,
             steps = 7
         )
+        // Live preview so the user knows what the text will look like before
+        // navigating back to Read to check.
+        Card(Modifier.fillMaxWidth()) {
+            Text(
+                "\"Blessed is the man that walketh not in the counsel of the ungodly.\" — Psalms 1:1",
+                style = com.johndev.verset.ui.theme.readerTextStyle(fontScale),
+                modifier = Modifier.padding(12.dp)
+            )
+        }
         Spacer(Modifier.height(16.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Follow system theme", Modifier.weight(1f))
@@ -142,9 +151,9 @@ fun SettingsScreen(
                 )
             }
 
-            // Only reachable on dev/local builds without FIREBASE_WEB_CLIENT_ID set.
-            // A correctly configured release build skips straight to sign-in.
-            !isReleaseConfigured && prefs.webClientId.isBlank() -> {
+            // Only reachable on DEBUG builds without FIREBASE_WEB_CLIENT_ID set.
+            // Release builds skip straight to sign-in.
+            !isReleaseConfigured && prefs.webClientId.isBlank() && BuildConfig.DEBUG -> {
                 SyncSetupCard(
                     icon = { Icon(Icons.Filled.Settings, contentDescription = null, tint = MaterialTheme.colorScheme.secondary) },
                     title = "Dev build: Web Client ID not set",
@@ -255,9 +264,10 @@ fun SettingsScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("Sign out") }
 
-                    // Dev-only escape hatch — only rendered on builds without a baked-in
-                    // Web Client ID, never visible to real users on a release build.
-                    if (!isReleaseConfigured) {
+                    // Dev-only escape hatch — only rendered on DEBUG builds without a
+                    // baked-in Web Client ID. Structurally impossible to show in a
+                    // release build regardless of configuration state.
+                    if (!isReleaseConfigured && BuildConfig.DEBUG) {
                         Spacer(Modifier.height(8.dp))
                         TextButton(onClick = { showClientIdField = !showClientIdField }) {
                             Text("[Dev] Change Web Client ID", style = MaterialTheme.typography.labelSmall)

@@ -37,7 +37,7 @@ import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MyVersesScreen(repository: BibleRepository) {
+fun MyVersesScreen(repository: BibleRepository, onReadInContext: (bookIndex: Int, chapter: Int) -> Unit = { _, _ -> }) {
     val context = LocalContext.current
     val tags by repository.tagsFlow().collectAsState(initial = emptyList())
     val allEntries by repository.allEntriesFlow().collectAsState(initial = emptyList())
@@ -150,7 +150,16 @@ fun MyVersesScreen(repository: BibleRepository) {
                                     onToggleSelect = { toggleEntrySelection(entry.id) },
                                     onExportImage = { themePickerFor = entry },
                                     onDelete = { scope.launch { repository.deleteEntry(entry) } },
-                                    onSaveNote = { newNote -> scope.launch { repository.updateEntry(entry.copy(note = newNote)) } }
+                                    onSaveNote = { newNote -> scope.launch { repository.updateEntry(entry.copy(note = newNote)) } },
+                                    onReadInContext = { onReadInContext((entry.verseId / 1_000_000L).toInt(), entry.chapter) },
+                                    onShareText = {
+                                        val text = "\"${entry.verseText}\"\n— ${entry.book} ${entry.chapter}:${entry.verse}"
+                                        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                            type = "text/plain"
+                                            putExtra(android.content.Intent.EXTRA_TEXT, text)
+                                        }
+                                        context.startActivity(android.content.Intent.createChooser(intent, "Share verse"))
+                                    }
                                 )
                                 HorizontalDivider()
                             }
@@ -269,7 +278,16 @@ fun MyVersesScreen(repository: BibleRepository) {
                                 onToggleSelect = { toggleEntrySelection(entry.id) },
                                 onExportImage = { themePickerFor = entry },
                                 onDelete = { scope.launch { repository.deleteEntry(entry) } },
-                                onSaveNote = { newNote -> scope.launch { repository.updateEntry(entry.copy(note = newNote)) } }
+                                onSaveNote = { newNote -> scope.launch { repository.updateEntry(entry.copy(note = newNote)) } },
+                                onReadInContext = { onReadInContext((entry.verseId / 1_000_000L).toInt(), entry.chapter) },
+                                onShareText = {
+                                    val text = "\"${entry.verseText}\"\n— ${entry.book} ${entry.chapter}:${entry.verse}"
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(android.content.Intent.EXTRA_TEXT, text)
+                                    }
+                                    context.startActivity(android.content.Intent.createChooser(intent, "Share verse"))
+                                }
                             )
                             HorizontalDivider()
                         }
@@ -656,10 +674,13 @@ private fun EntryRow(
     onToggleSelect: () -> Unit,
     onExportImage: () -> Unit,
     onDelete: () -> Unit,
-    onSaveNote: (String) -> Unit
+    onSaveNote: (String) -> Unit,
+    onReadInContext: () -> Unit = {},
+    onShareText: () -> Unit = {}
 ) {
     var editingNote by remember { mutableStateOf(false) }
     var draftNote by remember { mutableStateOf(entry.note) }
+    var confirmDelete by remember { mutableStateOf(false) }
 
     Row(
         Modifier
@@ -705,15 +726,54 @@ private fun EntryRow(
                 )
             }
             if (!selectionMode) {
-                Row {
+                Row(horizontalArrangement = Arrangement.spacedBy(0.dp)) {
                     TextButton(onClick = { draftNote = entry.note; editingNote = true }) { Text("Edit note") }
-                    TextButton(onClick = onDelete) { Text("Remove") }
+                    TextButton(onClick = onReadInContext) { Text("Read") }
+                    TextButton(onClick = onShareText) { Text("Share") }
+                    TextButton(onClick = { confirmDelete = true }) {
+                        Text("Remove", color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
         }
     }
 
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Remove verse?") },
+            text = { Text("\"${entry.verseText.take(80)}…\"\n\nThis removes it from your saved verses. This can't be undone.") },
+            confirmButton = {
+                TextButton(onClick = { onDelete(); confirmDelete = false }) {
+                    Text("Remove", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } }
+        )
+    }
+
     if (editingNote) {
+        AlertDialog(
+            onDismissRequest = { editingNote = false },
+            title = { Text("Edit note") },
+            text = {
+                OutlinedTextField(
+                    value = draftNote,
+                    onValueChange = { draftNote = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onSaveNote(draftNote.trim())
+                    editingNote = false
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { editingNote = false }) { Text("Cancel") } }
+        )
+    }
+}
         AlertDialog(
             onDismissRequest = { editingNote = false },
             title = { Text("Edit note") },

@@ -110,7 +110,10 @@ class BibleRepository(private val db: AppDatabase) {
     suspend fun clearHistory() = db.historyDao().clearAll()
 
     suspend fun getOrCreateTag(name: String, colorHex: String = "#4A6FA5"): Tag {
-        val trimmed = name.trim()
+        val trimmed = name.trim().split(" ")
+            .joinToString(" ") { word ->
+                word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            }
         db.tagDao().byName(trimmed)?.let { return it }
         val id = db.tagDao().insert(Tag(name = trimmed, colorHex = colorHex))
         return db.tagDao().byName(trimmed) ?: Tag(id = id, name = trimmed, colorHex = colorHex)

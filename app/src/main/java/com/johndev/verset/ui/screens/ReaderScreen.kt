@@ -111,7 +111,11 @@ fun ReaderScreen(
     var immersiveMode by remember { mutableStateOf(false) }
     val view = LocalView.current
     LaunchedEffect(immersiveMode) {
-        val window = (view.context as? android.app.Activity)?.window ?: return@LaunchedEffect
+        val activity = view.context as? android.app.Activity ?: return@LaunchedEffect
+        val window = activity.window
+        // Allow content to draw behind system bars so the cream reader background
+        // fills the status bar area instead of leaving a solid black rectangle.
+        WindowCompat.setDecorFitsSystemWindows(window, !immersiveMode)
         val controller = WindowCompat.getInsetsController(window, view)
         if (immersiveMode) {
             controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -120,12 +124,12 @@ fun ReaderScreen(
             controller.show(WindowInsetsCompat.Type.systemBars())
         }
     }
-    // Restore system bars if the user navigates away while immersive
     DisposableEffect(Unit) {
         onDispose {
-            val window = (view.context as? android.app.Activity)?.window
-            if (window != null) {
-                WindowCompat.getInsetsController(window, view).show(WindowInsetsCompat.Type.systemBars())
+            val activity = view.context as? android.app.Activity
+            if (activity != null) {
+                WindowCompat.setDecorFitsSystemWindows(activity.window, true)
+                WindowCompat.getInsetsController(activity.window, view).show(WindowInsetsCompat.Type.systemBars())
             }
         }
     }
@@ -344,6 +348,21 @@ fun ReaderScreen(
                                 .padding(vertical = 10.dp),
                             verticalAlignment = Alignment.Top
                         ) {
+                            // Left-border accent for tagged verses — more scannable than the
+                            // small bookmark icon alone, especially when reading quickly.
+                            if (isTagged && !selectionMode) {
+                                Box(
+                                    Modifier
+                                        .width(3.dp)
+                                        .height(with(androidx.compose.ui.platform.LocalDensity.current) {
+                                            // Approximate height of one verse row — grows with font scale
+                                            (prefs.fontScale * 56).dp
+                                        })
+                                        .background(MaterialTheme.colorScheme.secondary)
+                                        .padding(end = 4.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                            }
                             if (selectionMode) {
                                 Checkbox(
                                     checked = isSelected,
@@ -362,7 +381,7 @@ fun ReaderScreen(
                                 style = com.johndev.verset.ui.theme.readerTextStyle(prefs.fontScale),
                                 modifier = Modifier.weight(1f)
                             )
-                            if (isTagged) {
+                            if (isTagged && !selectionMode) {
                                 Icon(
                                     Icons.Filled.Bookmark,
                                     contentDescription = "Tagged",

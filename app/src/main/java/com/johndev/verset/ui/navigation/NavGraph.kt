@@ -96,7 +96,17 @@ fun VersetNavGraph(
                 )
             }
             composable("myVerses") {
-                MyVersesScreen(repository = repository)
+                MyVersesScreen(
+                    repository = repository,
+                    onReadInContext = { bookIndex, chapter ->
+                        pendingJump = bookIndex to chapter
+                        navController.navigate("reader") {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                )
             }
             composable("settings") {
                 SettingsScreen(
